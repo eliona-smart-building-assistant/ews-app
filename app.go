@@ -17,6 +17,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
 	"template/apiserver"
@@ -24,6 +25,7 @@ import (
 	"template/appdb"
 	"template/conf"
 	"template/eliona"
+	"template/ews"
 	"time"
 
 	"github.com/eliona-smart-building-assistant/go-eliona/app"
@@ -101,7 +103,12 @@ func collectData() {
 }
 
 func collectResources(config *apiserver.Configuration) error {
-	// Do the magic here
+	ews := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret)
+	err := ews.GetRooms()
+	if err != nil {
+		return fmt.Errorf("getting rooms: %v", err)
+	}
+
 	return nil
 }
 

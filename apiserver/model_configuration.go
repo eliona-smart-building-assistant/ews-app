@@ -1,5 +1,5 @@
 /*
- * App template API
+ * EWS app API
  *
  * API to access and configure the app template
  *
@@ -15,8 +15,14 @@ type Configuration struct {
 	// Internal identifier for the configured API (created automatically).
 	Id *int64 `json:"id,omitempty"`
 
-	// There should be things like API address, access keys and so on.
-	ApiAccessChangeMe string `json:"apiAccessChangeMe,omitempty"`
+	// Client ID. Only for MS Graph.
+	ClientId *string `json:"clientId,omitempty"`
+
+	// Client Secret. Only for MS Graph.
+	ClientSecret *string `json:"clientSecret,omitempty"`
+
+	// Tenant ID. Only for MS Graph.
+	TenantId *string `json:"tenantId,omitempty"`
 
 	// Flag to enable or disable fetching from this API
 	Enable *bool `json:"enable,omitempty"`

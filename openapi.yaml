@@ -218,11 +218,18 @@ components:
           description: Internal identifier for the configured API (created automatically).
           readOnly: true
           nullable: true
-        apiAccessChangeMe:
+        clientId:
           type: string
-          format: string
-          description: There should be things like API address, access keys and so on.
-          example: 10.10.10.101
+          description: Client ID. Only for MS Graph.
+          nullable: true
+        clientSecret:
+          type: string
+          description: Client Secret. Only for MS Graph.
+          nullable: true
+        tenantId:
+          type: string
+          description: Tenant ID. Only for MS Graph.
+          nullable: true
         enable:
           type: boolean
           description: Flag to enable or disable fetching from this API

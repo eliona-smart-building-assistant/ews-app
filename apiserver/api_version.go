@@ -1,5 +1,5 @@
 /*
- * App template API
+ * EWS app API
  *
  * API to access and configure the app template
  *

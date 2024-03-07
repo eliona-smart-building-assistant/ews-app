@@ -19,7 +19,9 @@ create schema if not exists template;
 create table if not exists template.configuration
 (
 	id                   bigserial primary key,
-	api_access_change_me text not null,
+	client_id            text not null,
+	client_secret        text not null,
+	tenant_id            text not null,
 	refresh_interval     integer not null default 60,
 	request_timeout      integer not null default 120,
 	asset_filter         json,
