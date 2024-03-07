@@ -20,33 +20,33 @@
 SET SCHEMA 'public';
 
 DELETE FROM versioning.patches
-WHERE app_name = 'template';
+WHERE app_name = 'ews';
 
 INSERT INTO public.eliona_store (app_name, category, version)
-VALUES ('template', 'app', '1.0.0')
+VALUES ('ews', 'app', '1.0.0')
 	ON CONFLICT (app_name) DO UPDATE SET version = '1.0.0';
 
 INSERT INTO public.eliona_app (app_name, enable)
-VALUES ('template', 't')
+VALUES ('ews', 't')
 	ON CONFLICT (app_name) DO UPDATE SET initialized_at = null;
 
-DROP SCHEMA IF EXISTS template CASCADE;
+DROP SCHEMA IF EXISTS ews CASCADE;
 
 DELETE FROM heap
 WHERE asset_id IN (
 	SELECT asset_id
 	FROM asset
-	WHERE asset_type LIKE E'template\\_%'
+	WHERE asset_type LIKE E'ews\\_%'
 );
 
 DELETE FROM attribute_schema
-WHERE asset_type LIKE E'template\\_%';
+WHERE asset_type LIKE E'ews\\_%';
 
 DELETE FROM asset
-WHERE asset_type LIKE E'template\\_%';
+WHERE asset_type LIKE E'ews\\_%';
 
 DELETE FROM asset_type
-WHERE asset_type LIKE E'template\\_%';
+WHERE asset_type LIKE E'ews\\_%';
 
 DELETE FROM public.widget_data
 WHERE widget_id IN (
@@ -66,5 +66,5 @@ WHERE dashboard_id IN (
 DELETE FROM public.dashboard
 WHERE name LIKE 'Template%';
 
--- DELETE FROM eliona_app WHERE app_name = 'template';
--- DELETE FROM eliona_store WHERE app_name = 'template';
+-- DELETE FROM eliona_app WHERE app_name = 'ews';
+-- DELETE FROM eliona_store WHERE app_name = 'ews';

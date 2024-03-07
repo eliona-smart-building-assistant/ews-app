@@ -1,17 +1,15 @@
 {
-  "name": "template",
-  "elionaMinVersion": "v11.0.0",
+  "name": "ews",
+  "elionaMinVersion": "v12.0.0",
   "displayName": {
-    "en": "App template",
-    "de": "App Vorlage"
+    "en": "Exchange Server",
+    "de": "Exchange Server"
   },
   "description": {
     "en": "This template can be used to create an app stub for an Eliona environment.",
     "de": "Diese Vorlage kann verwendet werden um eine App für Eliona zu erstellen."
   },
-  "dashboardTemplateNames": [
-    "Template"
-  ],
+  "dashboardTemplateNames": [],
   "apiUrl": "v1",
   "apiSpecificationPath": "/version/openapi.json",
   "documentationUrl": "https://doc.eliona.io/eliona/referenzen/app-entwicklung",
