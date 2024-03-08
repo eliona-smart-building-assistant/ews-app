@@ -3,7 +3,7 @@ module ews
 go 1.20
 
 require (
-	github.com/eliona-smart-building-assistant/app-integration-tests v1.0.1
+	github.com/eliona-smart-building-assistant/app-integration-tests v1.1.3
 	github.com/eliona-smart-building-assistant/go-eliona v1.9.34
 	github.com/eliona-smart-building-assistant/go-eliona-api-client/v2 v2.6.7
 	github.com/eliona-smart-building-assistant/go-utils v1.0.62
@@ -18,6 +18,7 @@ require (
 
 require (
 	github.com/golang/protobuf v1.5.3 // indirect
+	golang.org/x/image v0.15.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 )
@@ -43,7 +44,7 @@ require (
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
-	github.com/stretchr/testify v1.8.4 // indirect
+	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/volatiletech/inflect v0.0.1 // indirect
 	github.com/volatiletech/randomize v0.0.1 // indirect
 	golang.org/x/crypto v0.21.0 // indirect
