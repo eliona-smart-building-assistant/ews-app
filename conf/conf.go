@@ -19,9 +19,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"ews/apiserver"
+	"ews/appdb"
 	"fmt"
-	"template/apiserver"
-	"template/appdb"
 
 	"github.com/eliona-smart-building-assistant/go-eliona/frontend"
 	"github.com/eliona-smart-building-assistant/go-utils/common"

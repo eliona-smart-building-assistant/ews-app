@@ -17,9 +17,9 @@ package model
 
 import (
 	"context"
+	"ews/apiserver"
+	"ews/conf"
 	"fmt"
-	"template/apiserver"
-	"template/conf"
 
 	"github.com/eliona-smart-building-assistant/go-eliona/asset"
 	"github.com/eliona-smart-building-assistant/go-eliona/utils"

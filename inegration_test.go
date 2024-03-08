@@ -1,10 +1,11 @@
 package main
 
 import (
+	"testing"
+
 	"github.com/eliona-smart-building-assistant/app-integration-tests/app"
 	"github.com/eliona-smart-building-assistant/app-integration-tests/assert"
 	"github.com/eliona-smart-building-assistant/app-integration-tests/test"
-	"testing"
 )
 
 func TestApp(t *testing.T) {
@@ -17,5 +18,5 @@ func TestApp(t *testing.T) {
 func schema(t *testing.T) {
 	t.Parallel()
 
-	assert.SchemaExists(t, "template", []string{ /* insert tables */ })
+	assert.SchemaExists(t, "ews", []string{ /* insert tables */ })
 }

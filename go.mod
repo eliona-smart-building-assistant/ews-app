@@ -1,4 +1,4 @@
-module template
+module ews
 
 go 1.20
 

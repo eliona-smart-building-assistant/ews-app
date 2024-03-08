@@ -18,9 +18,9 @@ package apiservices
 import (
 	"context"
 	"errors"
+	"ews/apiserver"
+	"ews/conf"
 	"net/http"
-	"template/apiserver"
-	"template/conf"
 )
 
 // ConfigurationAPIService is a service that implements the logic for the ConfigurationAPIServicer

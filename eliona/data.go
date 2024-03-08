@@ -2,16 +2,16 @@ package eliona
 
 import (
 	"context"
+	"ews/apiserver"
+	"ews/conf"
+	"ews/model"
 	"fmt"
-	"template/apiserver"
-	"template/conf"
-	"template/model"
 
 	"github.com/eliona-smart-building-assistant/go-eliona/asset"
 	"github.com/eliona-smart-building-assistant/go-utils/log"
 )
 
-const ClientReference string = "template-app"
+const ClientReference string = "ews-app"
 
 func UpsertAssetData(config apiserver.Configuration, assets []model.ExampleDevice) error {
 	for _, projectId := range *config.ProjectIDs {

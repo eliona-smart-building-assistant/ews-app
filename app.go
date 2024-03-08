@@ -17,15 +17,15 @@ package main
 
 import (
 	"context"
+	"ews/apiserver"
+	"ews/apiservices"
+	"ews/appdb"
+	"ews/conf"
+	"ews/eliona"
+	"ews/ews"
 	"fmt"
 	"net/http"
 	"sync"
-	"template/apiserver"
-	"template/apiservices"
-	"template/appdb"
-	"template/conf"
-	"template/eliona"
-	"template/ews"
 	"time"
 
 	"github.com/eliona-smart-building-assistant/go-eliona/app"
