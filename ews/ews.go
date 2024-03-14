@@ -53,7 +53,11 @@ func (h *EWSHelper) GetRooms() error {
         </t:ExchangeImpersonation>
     </soapenv:Header>
     <soapenv:Body>
-       <m:GetRooms/>
+        <m:GetRooms>
+            <m:RoomList>
+                <t:EmailAddress>first.floor@z0vmd.onmicrosoft.com</t:EmailAddress>
+           </m:RoomList>
+        </m:GetRooms>
     </soapenv:Body>
 </soapenv:Envelope>
 `
