@@ -19,9 +19,8 @@ import (
 	"context"
 	"ews/apiserver"
 	"ews/apiservices"
-	"ews/appdb"
+	"ews/booking"
 	"ews/conf"
-	"ews/eliona"
 	"ews/ews"
 	"fmt"
 	"net/http"
@@ -112,42 +111,22 @@ func collectResources(config *apiserver.Configuration) error {
 	return nil
 }
 
-// listenForOutputChanges listens to output attribute changes from Eliona. Delete if not needed.
-func listenForOutputChanges() {
+func listenForBookings() {
+	baseURL := "http://localhost:3031/v1"
+	assetIDs := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 	for { // We want to restart listening in case something breaks.
-		outputs, err := eliona.ListenForOutputChanges()
+		bookingsClient := booking.NewClient(baseURL)
+		bookingsChan, err := bookingsClient.ListenForBookings(assetIDs)
 		if err != nil {
-			log.Error("eliona", "listening for output changes: %v", err)
+			log.Error("eliona-bookings", "listening for booking changes: %v", err)
 			return
 		}
-		for output := range outputs {
-			if cr := output.ClientReference.Get(); cr != nil && *cr == eliona.ClientReference {
-				// Just an echoed value this app sent.
-				continue
-			}
-			asset, err := conf.GetAssetById(output.AssetId)
-			if err != nil {
-				log.Error("conf", "getting asset by assetID %v: %v", output.AssetId, err)
-				return
-			}
-			config, err := conf.GetConfigForAsset(asset)
-			if err != nil {
-				log.Error("conf", "getting configuration for asset id %v: %v", asset.AssetID.Int32, err)
-				return
-			}
-			if err := outputData(asset, config, output.Data); err != nil {
-				log.Error("conf", "outputting data (%v) for config %v and assetId %v: %v", output.Data, config.Id, asset.AssetID.Int32, err)
-				return
-			}
+		for book := range bookingsChan {
+			fmt.Println(book)
+			// TODO: Actually use the booking.
 		}
 		time.Sleep(time.Second * 5) // Give the server a little break.
 	}
-}
-
-// outputData implements passing output data to broker. Remove if not needed.
-func outputData(asset appdb.Asset, config apiserver.Configuration, data map[string]interface{}) error {
-	// Do the output magic here.
-	return nil
 }
 
 // listenApi starts the API server and listen for requests
