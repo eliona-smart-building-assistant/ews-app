@@ -14,96 +14,51 @@ import (
 
 type EWSHelper struct {
 	Client *http.Client
-	EwsUrl string
+	EwsURL string
 }
 
-// NewEWSHelper initializes the EWSHelper with OAuth2 authentication and sets the EWS URL.
-func NewEWSHelper(clientId, tenantId, clientSecret string) *EWSHelper {
-	tokenURL := fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenantId)
-	ewsURL := "https://outlook.office365.com/EWS/Exchange.asmx"
-
-	// Configure the OAuth2 client credentials flow
-	config := clientcredentials.Config{
-		ClientID:     clientId,
+func NewEWSHelper(clientID, tenantID, clientSecret string) *EWSHelper {
+	oauth2Config := clientcredentials.Config{
+		ClientID:     clientID,
 		ClientSecret: clientSecret,
-		TokenURL:     tokenURL,
+		TokenURL:     fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenantID),
 		Scopes:       []string{"https://outlook.office365.com/.default"},
 	}
 
-	ctx := context.Background()
-	// Create an HTTP client using the OAuth2 config
-	httpClient := config.Client(ctx)
-
+	httpClient := oauth2Config.Client(context.Background())
 	return &EWSHelper{
 		Client: httpClient,
-		EwsUrl: ewsURL,
+		EwsURL: "https://outlook.office365.com/EWS/Exchange.asmx",
 	}
 }
 
-// GetRooms sends a SOAP request to EWS to get the list of room lists.
-func (h *EWSHelper) GetRooms() error {
-	requestBody := `
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-                  xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
-                  xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
-    <soapenv:Header>
-        <t:RequestServerVersion Version="Exchange2013_SP1"/>
-        <t:ExchangeImpersonation>
-            <t:ConnectingSID>
-                <t:PrincipalName>app@z0vmd.onmicrosoft.com</t:PrincipalName>
-            </t:ConnectingSID>
-        </t:ExchangeImpersonation>
-    </soapenv:Header>
-    <soapenv:Body>
-        <m:GetRooms>
-            <m:RoomList>
-                <t:EmailAddress>first.floor@z0vmd.onmicrosoft.com</t:EmailAddress>
-           </m:RoomList>
-        </m:GetRooms>
-    </soapenv:Body>
-</soapenv:Envelope>
-`
-
-	req, err := http.NewRequest("POST", h.EwsUrl, bytes.NewBufferString(requestBody))
+func (h *EWSHelper) sendRequest(xmlBody string) (string, error) {
+	request, err := http.NewRequest("POST", h.EwsURL, bytes.NewBufferString(xmlBody))
 	if err != nil {
-		return fmt.Errorf("error creating request: %w", err)
+		return "", fmt.Errorf("creating request: %w", err)
 	}
 
-	// Set necessary headers, including Content-Type. Authorization is handled by the OAuth2 http client.
-	req.Header.Add("Content-Type", "text/xml; charset=utf-8")
-
-	req.Header.Add("X-AnchorMailbox", "app@z0vmd.onmicrosoft.com")
-
-	resp, err := h.Client.Do(req)
+	request.Header.Add("Content-Type", "text/xml; charset=utf-8")
+	response, err := h.Client.Do(request)
 	if err != nil {
-		return fmt.Errorf("error sending request to EWS: %w", err)
+		return "", fmt.Errorf("sending request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer response.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		return fmt.Errorf("error reading response body: %w", err)
+		return "", fmt.Errorf("reading response body: %w", err)
 	}
 
-	fmt.Printf("Status: %v\n", resp.Status)
-
-	var env envelope
-	if err := xml.Unmarshal(respBody, &env); err != nil {
-		return fmt.Errorf("Error unmarshaling XML: %v", err)
-	}
-
-	for _, room := range env.Body.GetRoomsResponse.Rooms.Room {
-		fmt.Printf("Room Name: %s, Email: %s\n", room.Id.Name, room.Id.EmailAddress)
-	}
-	return nil
+	return string(responseBody), nil
 }
 
-type envelope struct {
-	XMLName xml.Name `xml:"Envelope"`
-	Body    body     `xml:"Body"`
+type roomsEnvelope struct {
+	XMLName xml.Name  `xml:"Envelope"`
+	Body    roomsBody `xml:"Body"`
 }
 
-type body struct {
+type roomsBody struct {
 	GetRoomsResponse getRoomsResponse `xml:"GetRoomsResponse"`
 }
 
@@ -126,6 +81,108 @@ type roomId struct {
 	EmailAddress string `xml:"EmailAddress"`
 	RoutingType  string `xml:"RoutingType"`
 	MailboxType  string `xml:"MailboxType"`
+}
+
+func (h *EWSHelper) GetRooms() error {
+	requestXML := `
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+                  xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+    <soapenv:Header>
+        <t:RequestServerVersion Version="Exchange2013_SP1"/>
+        <t:ExchangeImpersonation>
+            <t:ConnectingSID>
+                <t:PrincipalName>app@z0vmd.onmicrosoft.com</t:PrincipalName>
+            </t:ConnectingSID>
+        </t:ExchangeImpersonation>
+    </soapenv:Header>
+    <soapenv:Body>
+        <m:GetRooms>
+            <m:RoomList>
+                <t:EmailAddress>first.floor@z0vmd.onmicrosoft.com</t:EmailAddress>
+           </m:RoomList>
+        </m:GetRooms>
+    </soapenv:Body>
+</soapenv:Envelope>
+`
+	responseXML, err := h.sendRequest(requestXML)
+	if err != nil {
+		return err
+	}
+
+	return h.parseAndPrintRooms(responseXML)
+}
+
+func (h *EWSHelper) parseAndPrintRooms(xmlBody string) error {
+	var env roomsEnvelope
+	if err := xml.Unmarshal([]byte(xmlBody), &env); err != nil {
+		return fmt.Errorf("unmarshaling XML: %v", err)
+	}
+
+	for _, room := range env.Body.GetRoomsResponse.Rooms.Room {
+		fmt.Printf("Room Name: %s, Email: %s\n", room.Id.Name, room.Id.EmailAddress)
+	}
+	return nil
+}
+
+func (h *EWSHelper) GetRoomAppointments(roomEmail string, start, end time.Time) error {
+	requestXML := fmt.Sprintf(`
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+                  xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+    <soapenv:Header>
+        <t:RequestServerVersion Version="Exchange2013_SP1"/>
+        <t:ExchangeImpersonation>
+            <t:ConnectingSID>
+                <t:SmtpAddress>%s</t:SmtpAddress>
+            </t:ConnectingSID>
+        </t:ExchangeImpersonation>
+    </soapenv:Header>
+    <soapenv:Body>
+        <m:FindItem Traversal="Shallow">
+            <m:ItemShape>
+                <t:BaseShape>IdOnly</t:BaseShape>
+                <t:AdditionalProperties>
+                    <t:FieldURI FieldURI="item:Subject"/>
+                    <t:FieldURI FieldURI="item:DateTimeReceived"/>
+                    <t:FieldURI FieldURI="calendar:Start"/>
+                    <t:FieldURI FieldURI="calendar:End"/>
+                    <t:FieldURI FieldURI="calendar:Organizer"/>
+                    <t:FieldURI FieldURI="calendar:IsCancelled"/>
+                </t:AdditionalProperties>
+            </m:ItemShape>
+            <m:CalendarView MaxEntriesReturned="50" StartDate="%s" EndDate="%s"/>
+            <m:ParentFolderIds>
+                <t:DistinguishedFolderId Id="calendar">
+                    <t:Mailbox>
+                        <t:EmailAddress>%s</t:EmailAddress>
+                    </t:Mailbox>
+                </t:DistinguishedFolderId>
+            </m:ParentFolderIds>
+        </m:FindItem>
+    </soapenv:Body>
+</soapenv:Envelope>
+`, roomEmail, start.Format(time.RFC3339), end.Format(time.RFC3339), roomEmail)
+	responseXML, err := h.sendRequest(requestXML)
+	if err != nil {
+		return err
+	}
+
+	return h.parseAndPrintAppointments(responseXML)
+}
+
+func (h *EWSHelper) parseAndPrintAppointments(xmlBody string) error {
+	var env roomEventsEnvelope
+	if err := xml.Unmarshal([]byte(xmlBody), &env); err != nil {
+		return fmt.Errorf("unmarshaling XML: %v\n", err)
+	}
+
+	for _, message := range env.Body.FindItemResponse.ResponseMessages.FindItemResponseMessage {
+		for _, item := range message.RootFolder.Items.CalendarItem {
+			fmt.Printf("Subject: %s, Start: %s, End: %s\n", item.Subject, item.Start, item.End)
+		}
+	}
+	return nil
 }
 
 type roomEventsEnvelope struct {
@@ -184,77 +241,4 @@ type mailbox struct {
 	EmailAddress string `xml:"EmailAddress"`
 	RoutingType  string `xml:"RoutingType"`
 	MailboxType  string `xml:"MailboxType"`
-}
-
-func (h *EWSHelper) GetRoomAppointments(roomEmailAddress string, start, end time.Time) error {
-	requestBody := fmt.Sprintf(`
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-                  xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
-                  xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
-    <soapenv:Header>
-        <t:RequestServerVersion Version="Exchange2013_SP1"/>
-        <t:ExchangeImpersonation>
-            <t:ConnectingSID>
-                <t:SmtpAddress>%s</t:SmtpAddress>
-            </t:ConnectingSID>
-        </t:ExchangeImpersonation>
-    </soapenv:Header>
-    <soapenv:Body>
-        <m:FindItem Traversal="Shallow">
-            <m:ItemShape>
-                <t:BaseShape>IdOnly</t:BaseShape>
-                <t:AdditionalProperties>
-                    <t:FieldURI FieldURI="item:Subject"/>
-                    <t:FieldURI FieldURI="item:DateTimeReceived"/>
-                    <t:FieldURI FieldURI="calendar:Start"/>
-                    <t:FieldURI FieldURI="calendar:End"/>
-                    <t:FieldURI FieldURI="calendar:Organizer"/>
-                    <t:FieldURI FieldURI="calendar:IsCancelled"/>
-                </t:AdditionalProperties>
-            </m:ItemShape>
-            <m:CalendarView MaxEntriesReturned="50" StartDate="%s" EndDate="%s"/>
-            <m:ParentFolderIds>
-                <t:DistinguishedFolderId Id="calendar">
-                    <t:Mailbox>
-                        <t:EmailAddress>%s</t:EmailAddress>
-                    </t:Mailbox>
-                </t:DistinguishedFolderId>
-            </m:ParentFolderIds>
-        </m:FindItem>
-    </soapenv:Body>
-</soapenv:Envelope>
-`, roomEmailAddress, start.Format(time.RFC3339), end.Format(time.RFC3339), roomEmailAddress)
-
-	req, err := http.NewRequest("POST", h.EwsUrl, bytes.NewBufferString(requestBody))
-	if err != nil {
-		return fmt.Errorf("error creating request: %w", err)
-	}
-
-	req.Header.Add("Content-Type", "text/xml; charset=utf-8")
-	req.Header.Add("X-AnchorMailbox", roomEmailAddress)
-
-	resp, err := h.Client.Do(req)
-	if err != nil {
-		return fmt.Errorf("error sending request to EWS: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("error reading response body: %w", err)
-	}
-
-	fmt.Printf("Status: %v\n", resp.Status)
-	var env roomEventsEnvelope
-	if err := xml.Unmarshal(respBody, &env); err != nil {
-		return fmt.Errorf("Error unmarshaling XML: %v\n", err)
-	}
-
-	for _, responseMessage := range env.Body.FindItemResponse.ResponseMessages.FindItemResponseMessage {
-		for _, item := range responseMessage.RootFolder.Items.CalendarItem {
-			fmt.Printf("Subject: %s, Start: %s, End: %s\n", item.Subject, item.Start, item.End)
-		}
-	}
-
-	return nil
 }
