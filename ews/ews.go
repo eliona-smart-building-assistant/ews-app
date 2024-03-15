@@ -3,6 +3,7 @@ package ews
 import (
 	"bytes"
 	"context"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -84,9 +85,44 @@ func (h *EWSHelper) GetRooms() error {
 	}
 
 	fmt.Printf("Status: %v\n", resp.Status)
-	fmt.Printf("Response: %s\n", string(respBody))
-	// Here, you would parse the XML response to extract the room lists.
-	// For simplicity, this example prints the raw XML response.
 
+	var env envelope
+	if err := xml.Unmarshal(respBody, &env); err != nil {
+		return fmt.Errorf("Error unmarshaling XML: %v", err)
+	}
+
+	for _, room := range env.Body.GetRoomsResponse.Rooms.Room {
+		fmt.Printf("Room Name: %s, Email: %s\n", room.Id.Name, room.Id.EmailAddress)
+	}
 	return nil
+}
+
+type envelope struct {
+	XMLName xml.Name `xml:"Envelope"`
+	Body    body     `xml:"Body"`
+}
+
+type body struct {
+	GetRoomsResponse getRoomsResponse `xml:"GetRoomsResponse"`
+}
+
+type getRoomsResponse struct {
+	ResponseClass string `xml:"ResponseClass,attr"`
+	ResponseCode  string `xml:"ResponseCode"`
+	Rooms         rooms  `xml:"Rooms"`
+}
+
+type rooms struct {
+	Room []room `xml:"Room"`
+}
+
+type room struct {
+	Id roomId `xml:"Id"`
+}
+
+type roomId struct {
+	Name         string `xml:"Name"`
+	EmailAddress string `xml:"EmailAddress"`
+	RoutingType  string `xml:"RoutingType"`
+	MailboxType  string `xml:"MailboxType"`
 }
