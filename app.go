@@ -107,6 +107,10 @@ func collectResources(config *apiserver.Configuration) error {
 	if err != nil {
 		return fmt.Errorf("getting rooms: %v", err)
 	}
+	err = ews.GetRoomAppointments("silent.room@z0vmd.onmicrosoft.com", time.Now().Add(-8*time.Hour), time.Now().Add(8*time.Hour))
+	if err != nil {
+		return fmt.Errorf("getting appointments: %v", err)
+	}
 
 	return nil
 }
