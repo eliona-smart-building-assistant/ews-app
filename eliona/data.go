@@ -32,7 +32,7 @@ func UpsertAssetData(config apiserver.Configuration, assets []model.ExampleDevic
 				Data:            a,
 				ClientReference: ClientReference,
 			}
-			if asset.UpsertAssetDataIfAssetExists(data); err != nil {
+			if err := asset.UpsertAssetDataIfAssetExists(data); err != nil {
 				return fmt.Errorf("upserting data: %v", err)
 			}
 		}
