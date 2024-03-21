@@ -17,6 +17,7 @@ package conf
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"ews/apiserver"
@@ -57,11 +58,11 @@ func GetConfig(ctx context.Context, configID int64) (*apiserver.Configuration, e
 	dbConfig, err := appdb.Configurations(
 		appdb.ConfigurationWhere.ID.EQ(configID),
 	).OneG(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrBadRequest
+	}
 	if err != nil {
 		return nil, fmt.Errorf("fetching config from database: %v", err)
-	}
-	if dbConfig == nil {
-		return nil, ErrBadRequest
 	}
 	apiConfig, err := apiConfigFromDbConfig(dbConfig)
 	if err != nil {
