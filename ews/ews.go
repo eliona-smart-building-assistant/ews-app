@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"golang.org/x/oauth2/clientcredentials"
@@ -241,4 +242,88 @@ type mailbox struct {
 	EmailAddress string `xml:"EmailAddress"`
 	RoutingType  string `xml:"RoutingType"`
 	MailboxType  string `xml:"MailboxType"`
+}
+
+type Appointment struct {
+	Subject   string
+	Start     time.Time
+	End       time.Time
+	Location  string
+	Attendees []string
+}
+
+func (h *EWSHelper) CreateAppointment(appointment Appointment) error {
+	requestBody := fmt.Sprintf(`
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+                  xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+    <soapenv:Header>
+        <t:RequestServerVersion Version="Exchange2013_SP1"/>
+        <t:ExchangeImpersonation>
+            <t:ConnectingSID>
+                <t:SmtpAddress>%s</t:SmtpAddress>
+            </t:ConnectingSID>
+        </t:ExchangeImpersonation>
+    </soapenv:Header>
+    <soapenv:Body>
+        <m:CreateItem SendMeetingInvitations="SendToAllAndSaveCopy">
+            <m:SavedItemFolderId>
+                <t:DistinguishedFolderId Id="calendar"/>
+            </m:SavedItemFolderId>
+            <m:Items>
+                <t:CalendarItem>
+                    <t:Subject>%s</t:Subject>
+                    <t:Start>%s</t:Start>
+                    <t:End>%s</t:End>
+                    <t:IsAllDayEvent>false</t:IsAllDayEvent>
+                    <t:LegacyFreeBusyStatus>Busy</t:LegacyFreeBusyStatus>
+                    <t:Location>%s</t:Location>
+                    <t:RequiredAttendees>%s</t:RequiredAttendees>
+                </t:CalendarItem>
+            </m:Items>
+        </m:CreateItem>
+    </soapenv:Body>
+</soapenv:Envelope>`,
+		"msgraph@z0vmd.onmicrosoft.com",
+		appointment.Subject,
+		appointment.Start.Format(time.RFC3339),
+		appointment.End.Format(time.RFC3339),
+		appointment.Location,
+		formatAttendees(appointment.Attendees),
+	)
+
+	req, err := http.NewRequest("POST", h.EwsURL, bytes.NewBufferString(requestBody))
+	if err != nil {
+		return fmt.Errorf("error creating request: %w", err)
+	}
+
+	req.Header.Add("Content-Type", "text/xml; charset=utf-8")
+
+	resp, err := h.Client.Do(req)
+	if err != nil {
+		return fmt.Errorf("error sending request to EWS: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("error reading response body: %w", err)
+	}
+
+	fmt.Println(string(respBody))
+
+	return nil
+}
+
+func formatAttendees(attendees []string) string {
+	var attendeeXML strings.Builder
+	for _, email := range attendees {
+		attendeeXML.WriteString(fmt.Sprintf(`
+            <t:Attendee>
+                <t:Mailbox>
+                    <t:EmailAddress>%s</t:EmailAddress>
+                </t:Mailbox>
+            </t:Attendee>`, email))
+	}
+	return attendeeXML.String()
 }

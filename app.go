@@ -102,16 +102,27 @@ func collectData() {
 }
 
 func collectResources(config *apiserver.Configuration) error {
-	ews := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret)
-	err := ews.GetRooms()
+	ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret)
+	err := ewsHelper.GetRooms()
 	if err != nil {
 		return fmt.Errorf("getting rooms: %v", err)
 	}
-	err = ews.GetRoomAppointments("silent.room@z0vmd.onmicrosoft.com", time.Now().Add(-8*time.Hour), time.Now().Add(8*time.Hour))
+	err = ewsHelper.GetRoomAppointments("silent.room@z0vmd.onmicrosoft.com", time.Now().Add(-8*time.Hour), time.Now().Add(8*time.Hour))
 	if err != nil {
 		return fmt.Errorf("getting appointments: %v", err)
 	}
 
+	appointment := ews.Appointment{
+		Subject:   "Eliona booking",
+		Start:     time.Now().Add(24 * time.Hour),
+		End:       time.Now().Add(24*time.Hour + 10*time.Minute),
+		Location:  "silent.room@z0vmd.onmicrosoft.com",
+		Attendees: []string{"msgraph@z0vmd.onmicrosoft.com"},
+	}
+	err = ewsHelper.CreateAppointment(appointment)
+	if err != nil {
+		return fmt.Errorf("creating appointment: %v", err)
+	}
 	return nil
 }
 
