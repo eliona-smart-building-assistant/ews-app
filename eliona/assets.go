@@ -48,8 +48,8 @@ func notifyUser(userId string, projectId string, assetsCreated int) error {
 				User:      userId,
 				ProjectId: *api.NewNullableString(&projectId),
 				Message: *api.NewNullableTranslation(&api.Translation{
-					De: api.PtrString(fmt.Sprintf("Template App hat %d neue Assets angelegt. Diese sind nun im Asset-Management verfügbar.", assetsCreated)),
-					En: api.PtrString(fmt.Sprintf("Template app added %v new assets. They are now available in Asset Management.", assetsCreated)),
+					De: api.PtrString(fmt.Sprintf("Microsoft Exchange App hat %d neue Assets angelegt. Diese sind nun im Asset-Management verfügbar.", assetsCreated)),
+					En: api.PtrString(fmt.Sprintf("Microsoft Exchange App added %v new assets. They are now available in Asset Management.", assetsCreated)),
 				}),
 			}).
 		Execute()

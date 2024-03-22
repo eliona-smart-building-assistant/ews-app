@@ -13,7 +13,7 @@ import (
 
 const ClientReference string = "ews-app"
 
-func UpsertAssetData(config apiserver.Configuration, assets []model.ExampleDevice) error {
+func UpsertAssetData(config apiserver.Configuration, assets []model.Room) error {
 	for _, projectId := range *config.ProjectIDs {
 		for _, a := range assets {
 			log.Debug("Eliona", "upserting data for asset: config %d and asset '%v'", config.Id, a.GetGAI())

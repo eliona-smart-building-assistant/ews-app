@@ -1,0 +1,12 @@
+{
+	"attributes": [],
+	"custom": false,
+	"icon": null,
+	"name": "ews_root",
+	"translation": {
+		"de": "Microsoft Exchange Root",
+		"en": "Microsoft Exchange Root"
+	},
+	"urldoc": "",
+	"vendor": "Microsoft"
+}

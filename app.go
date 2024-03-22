@@ -21,6 +21,7 @@ import (
 	"ews/apiservices"
 	"ews/booking"
 	"ews/conf"
+	"ews/eliona"
 	"ews/ews"
 	"fmt"
 	"net/http"
@@ -91,7 +92,7 @@ func collectData() {
 
 		common.RunOnceWithParam(func(config apiserver.Configuration) {
 			log.Info("main", "Collecting %d started.", *config.Id)
-			if err := collectResources(&config); err != nil {
+			if err := collectResources(config); err != nil {
 				return // Error is handled in the method itself.
 			}
 			log.Info("main", "Collecting %d finished.", *config.Id)
@@ -101,15 +102,23 @@ func collectData() {
 	}
 }
 
-func collectResources(config *apiserver.Configuration) error {
+func collectResources(config apiserver.Configuration) error {
 	ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret)
-	err := ewsHelper.GetRooms()
+	root, err := ewsHelper.GetAssets(config)
 	if err != nil {
-		return fmt.Errorf("getting rooms: %v", err)
+		log.Error("EWS", "getting assets: %v", err)
+		return err
 	}
+
+	if err := eliona.CreateAssets(config, &root); err != nil {
+		log.Error("eliona", "creating assets: %v", err)
+		return err
+	}
+
 	err = ewsHelper.GetRoomAppointments("silent.room@z0vmd.onmicrosoft.com", time.Now().Add(-8*time.Hour), time.Now().Add(8*time.Hour))
 	if err != nil {
-		return fmt.Errorf("getting appointments: %v", err)
+		log.Error("EWS", "getting appointments: %v", err)
+		return err
 	}
 
 	appointment := ews.Appointment{
@@ -121,7 +130,8 @@ func collectResources(config *apiserver.Configuration) error {
 	}
 	err = ewsHelper.CreateAppointment(appointment)
 	if err != nil {
-		return fmt.Errorf("creating appointment: %v", err)
+		log.Error("EWS", "creating appointment: %v", err)
+		return err
 	}
 	return nil
 }

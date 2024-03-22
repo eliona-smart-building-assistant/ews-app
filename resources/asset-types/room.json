@@ -1,0 +1,22 @@
+{
+	"attributes": [
+		{
+			"enable": true,
+			"name": "email",
+			"subtype": "info",
+			"translation": {
+				"de": "E-Mail Adresse",
+				"en": "E-Mail Address"
+			}
+		}
+	],
+	"custom": false,
+	"icon": null,
+	"name": "ews_room",
+	"translation": {
+		"de": "Microsoft Exchange Raum",
+		"en": "Microsoft Exchange Root"
+	},
+	"urldoc": "",
+	"vendor": "Microsoft"
+}

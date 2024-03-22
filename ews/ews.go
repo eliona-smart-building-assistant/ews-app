@@ -1,9 +1,26 @@
+//  This file is part of the eliona project.
+//  Copyright © 2022 LEICOM iTEC AG. All Rights Reserved.
+//  ______ _ _
+// |  ____| (_)
+// | |__  | |_  ___  _ __   __ _
+// |  __| | | |/ _ \| '_ \ / _` |
+// | |____| | | (_) | | | | (_| |
+// |______|_|_|\___/|_| |_|\__,_|
+//
+//  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+//  BUT NOT LIMITED  TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+//  NON INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+//  DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 package ews
 
 import (
 	"bytes"
 	"context"
 	"encoding/xml"
+	"ews/apiserver"
+	"ews/model"
 	"fmt"
 	"io"
 	"net/http"
@@ -70,7 +87,7 @@ type getRoomsResponse struct {
 }
 
 type rooms struct {
-	Room []room `xml:"Room"`
+	Rooms []room `xml:"Room"`
 }
 
 type room struct {
@@ -80,11 +97,13 @@ type room struct {
 type roomId struct {
 	Name         string `xml:"Name"`
 	EmailAddress string `xml:"EmailAddress"`
-	RoutingType  string `xml:"RoutingType"`
-	MailboxType  string `xml:"MailboxType"`
+	// RoutingType  string `xml:"RoutingType"`
+	// MailboxType  string `xml:"MailboxType"`
 }
 
-func (h *EWSHelper) GetRooms() error {
+func (h *EWSHelper) GetAssets(config apiserver.Configuration) (model.Root, error) {
+	// TODO: Add service user name to config
+	// TODO: Query room lists
 	requestXML := `
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                   xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
@@ -108,22 +127,27 @@ func (h *EWSHelper) GetRooms() error {
 `
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
-		return err
+		return model.Root{}, fmt.Errorf("requesting rooms: %v", err)
 	}
 
-	return h.parseAndPrintRooms(responseXML)
-}
-
-func (h *EWSHelper) parseAndPrintRooms(xmlBody string) error {
 	var env roomsEnvelope
-	if err := xml.Unmarshal([]byte(xmlBody), &env); err != nil {
-		return fmt.Errorf("unmarshaling XML: %v", err)
+	if err := xml.Unmarshal([]byte(responseXML), &env); err != nil {
+		return model.Root{}, fmt.Errorf("unmarshaling XML: %v", err)
 	}
 
-	for _, room := range env.Body.GetRoomsResponse.Rooms.Room {
-		fmt.Printf("Room Name: %s, Email: %s\n", room.Id.Name, room.Id.EmailAddress)
+	xmlRooms := env.Body.GetRoomsResponse.Rooms.Rooms
+	modelRooms := make([]model.Room, 0, len(xmlRooms))
+	for _, room := range xmlRooms {
+		modelRooms = append(modelRooms, model.Room{
+			Email:  room.Id.EmailAddress,
+			Name:   room.Id.Name,
+			Config: config,
+		})
 	}
-	return nil
+	return model.Root{
+		Rooms:  modelRooms,
+		Config: config,
+	}, nil
 }
 
 func (h *EWSHelper) GetRoomAppointments(roomEmail string, start, end time.Time) error {

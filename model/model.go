@@ -26,18 +26,16 @@ import (
 	"github.com/eliona-smart-building-assistant/go-utils/common"
 )
 
-// TODO: define the asset structure here
+type Room struct {
+	Email string `eliona:"email,filterable" subtype:"info"`
+	Name  string `eliona:"name,filterable"`
 
-type ExampleDevice struct {
-	ID   string `eliona:"id" subtype:"info"`
-	Name string `eliona:"name,filterable" subtype:"info"`
-
-	Config *apiserver.Configuration
+	Config apiserver.Configuration
 }
 
-func (d *ExampleDevice) AdheresToFilter(filter [][]apiserver.FilterRule) (bool, error) {
+func (r *Room) AdheresToFilter(filter [][]apiserver.FilterRule) (bool, error) {
 	f := apiFilterToCommonFilter(filter)
-	fp, err := utils.StructToMap(d)
+	fp, err := utils.StructToMap(r)
 	if err != nil {
 		return false, fmt.Errorf("converting struct to map: %v", err)
 	}
@@ -48,58 +46,57 @@ func (d *ExampleDevice) AdheresToFilter(filter [][]apiserver.FilterRule) (bool, 
 	return adheres, nil
 }
 
-func (d *ExampleDevice) GetName() string {
-	return d.Name
+func (r *Room) GetName() string {
+	return r.Name
 }
 
-func (d *ExampleDevice) GetDescription() string {
-	return ""
+func (r *Room) GetDescription() string {
+	return "Room resource managed in Microsoft Exchange server"
 }
 
-func (d *ExampleDevice) GetAssetType() string {
-	return "mystrom_switch"
+func (r *Room) GetAssetType() string {
+	return "ews_room"
 }
 
-func (d *ExampleDevice) GetGAI() string {
-	return d.GetAssetType() + "_" + d.ID
+func (r *Room) GetGAI() string {
+	return r.GetAssetType() + "_" + r.Email
 }
 
-func (d *ExampleDevice) GetAssetID(projectID string) (*int32, error) {
-	return conf.GetAssetId(context.Background(), *d.Config, projectID, d.GetGAI())
+func (r *Room) GetAssetID(projectID string) (*int32, error) {
+	return conf.GetAssetId(context.Background(), r.Config, projectID, r.GetGAI())
 }
 
-func (d *ExampleDevice) SetAssetID(assetID int32, projectID string) error {
-	if err := conf.InsertAsset(context.Background(), *d.Config, projectID, d.GetGAI(), assetID, d.ID); err != nil {
-		return fmt.Errorf("inserting asset to Config db: %v", err)
+func (r *Room) SetAssetID(assetID int32, projectID string) error {
+	if err := conf.InsertAsset(context.Background(), r.Config, projectID, r.GetGAI(), assetID, r.Email); err != nil {
+		return fmt.Errorf("inserting asset to config db: %v", err)
 	}
 	return nil
 }
 
-func (d *ExampleDevice) GetLocationalChildren() []asset.LocationalNode {
+func (r *Room) GetLocationalChildren() []asset.LocationalNode {
 	return []asset.LocationalNode{}
 }
 
-func (d *ExampleDevice) GetFunctionalChildren() []asset.FunctionalNode {
+func (r *Room) GetFunctionalChildren() []asset.FunctionalNode {
 	return []asset.FunctionalNode{}
 }
 
 type Root struct {
-	locationsMap map[string]ExampleDevice
-	devicesSlice []ExampleDevice
+	Rooms []Room
 
-	Config *apiserver.Configuration
+	Config apiserver.Configuration
 }
 
 func (r *Root) GetName() string {
-	return "template"
+	return "ews"
 }
 
 func (r *Root) GetDescription() string {
-	return "Root asset for template devices"
+	return "Root asset for ews resources"
 }
 
 func (r *Root) GetAssetType() string {
-	return "template_root"
+	return "ews_root"
 }
 
 func (r *Root) GetGAI() string {
@@ -107,29 +104,28 @@ func (r *Root) GetGAI() string {
 }
 
 func (r *Root) GetAssetID(projectID string) (*int32, error) {
-	return conf.GetAssetId(context.Background(), *r.Config, projectID, r.GetGAI())
+	return conf.GetAssetId(context.Background(), r.Config, projectID, r.GetGAI())
 }
 
 func (r *Root) SetAssetID(assetID int32, projectID string) error {
-	if err := conf.InsertAsset(context.Background(), *r.Config, projectID, r.GetGAI(), assetID, ""); err != nil {
+	if err := conf.InsertAsset(context.Background(), r.Config, projectID, r.GetGAI(), assetID, ""); err != nil {
 		return fmt.Errorf("inserting asset to config db: %v", err)
 	}
 	return nil
 }
 
 func (r *Root) GetLocationalChildren() []asset.LocationalNode {
-	locationalChildren := make([]asset.LocationalNode, 0)
-	for _, room := range r.locationsMap {
-		roomCopy := room // Create a copy of room
-		locationalChildren = append(locationalChildren, &roomCopy)
+	locationalChildren := make([]asset.LocationalNode, 0, len(r.Rooms))
+	for i := range r.Rooms {
+		locationalChildren = append(locationalChildren, &r.Rooms[i])
 	}
 	return locationalChildren
 }
 
 func (r *Root) GetFunctionalChildren() []asset.FunctionalNode {
-	functionalChildren := make([]asset.FunctionalNode, len(r.devicesSlice))
-	for i := range r.devicesSlice {
-		functionalChildren[i] = &r.devicesSlice[i]
+	functionalChildren := make([]asset.FunctionalNode, 0, len(r.Rooms))
+	for i := range r.Rooms {
+		functionalChildren = append(functionalChildren, &r.Rooms[i])
 	}
 	return functionalChildren
 }
