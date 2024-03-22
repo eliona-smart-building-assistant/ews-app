@@ -25,10 +25,14 @@ type Dashboard struct {
 	UserId string `json:"userId"`
 
 	// The sequence of the dashboard
+	// Deprecated
 	Sequence *int32 `json:"sequence,omitempty"`
 
 	// List of widgets on this dashboard (order matches the order of widgets on the dashboard)
 	Widgets *[]Widget `json:"widgets,omitempty"`
+
+	// Is the dashboard public and not bound to a dedicated user
+	Public *bool `json:"public,omitempty"`
 }
 
 // AssertDashboardRequired checks if the required fields are not zero-ed

@@ -29,6 +29,8 @@ type Configuration struct {
 	ClientID        string            `boil:"client_id" json:"client_id" toml:"client_id" yaml:"client_id"`
 	ClientSecret    string            `boil:"client_secret" json:"client_secret" toml:"client_secret" yaml:"client_secret"`
 	TenantID        string            `boil:"tenant_id" json:"tenant_id" toml:"tenant_id" yaml:"tenant_id"`
+	ServiceUserUpn  string            `boil:"service_user_upn" json:"service_user_upn" toml:"service_user_upn" yaml:"service_user_upn"`
+	RoomListUpn     string            `boil:"room_list_upn" json:"room_list_upn" toml:"room_list_upn" yaml:"room_list_upn"`
 	RefreshInterval int32             `boil:"refresh_interval" json:"refresh_interval" toml:"refresh_interval" yaml:"refresh_interval"`
 	RequestTimeout  int32             `boil:"request_timeout" json:"request_timeout" toml:"request_timeout" yaml:"request_timeout"`
 	AssetFilter     null.JSON         `boil:"asset_filter" json:"asset_filter,omitempty" toml:"asset_filter" yaml:"asset_filter,omitempty"`
@@ -46,6 +48,8 @@ var ConfigurationColumns = struct {
 	ClientID        string
 	ClientSecret    string
 	TenantID        string
+	ServiceUserUpn  string
+	RoomListUpn     string
 	RefreshInterval string
 	RequestTimeout  string
 	AssetFilter     string
@@ -58,6 +62,8 @@ var ConfigurationColumns = struct {
 	ClientID:        "client_id",
 	ClientSecret:    "client_secret",
 	TenantID:        "tenant_id",
+	ServiceUserUpn:  "service_user_upn",
+	RoomListUpn:     "room_list_upn",
 	RefreshInterval: "refresh_interval",
 	RequestTimeout:  "request_timeout",
 	AssetFilter:     "asset_filter",
@@ -72,6 +78,8 @@ var ConfigurationTableColumns = struct {
 	ClientID        string
 	ClientSecret    string
 	TenantID        string
+	ServiceUserUpn  string
+	RoomListUpn     string
 	RefreshInterval string
 	RequestTimeout  string
 	AssetFilter     string
@@ -84,6 +92,8 @@ var ConfigurationTableColumns = struct {
 	ClientID:        "configuration.client_id",
 	ClientSecret:    "configuration.client_secret",
 	TenantID:        "configuration.tenant_id",
+	ServiceUserUpn:  "configuration.service_user_upn",
+	RoomListUpn:     "configuration.room_list_upn",
 	RefreshInterval: "configuration.refresh_interval",
 	RequestTimeout:  "configuration.request_timeout",
 	AssetFilter:     "configuration.asset_filter",
@@ -247,6 +257,8 @@ var ConfigurationWhere = struct {
 	ClientID        whereHelperstring
 	ClientSecret    whereHelperstring
 	TenantID        whereHelperstring
+	ServiceUserUpn  whereHelperstring
+	RoomListUpn     whereHelperstring
 	RefreshInterval whereHelperint32
 	RequestTimeout  whereHelperint32
 	AssetFilter     whereHelpernull_JSON
@@ -259,6 +271,8 @@ var ConfigurationWhere = struct {
 	ClientID:        whereHelperstring{field: "\"ews\".\"configuration\".\"client_id\""},
 	ClientSecret:    whereHelperstring{field: "\"ews\".\"configuration\".\"client_secret\""},
 	TenantID:        whereHelperstring{field: "\"ews\".\"configuration\".\"tenant_id\""},
+	ServiceUserUpn:  whereHelperstring{field: "\"ews\".\"configuration\".\"service_user_upn\""},
+	RoomListUpn:     whereHelperstring{field: "\"ews\".\"configuration\".\"room_list_upn\""},
 	RefreshInterval: whereHelperint32{field: "\"ews\".\"configuration\".\"refresh_interval\""},
 	RequestTimeout:  whereHelperint32{field: "\"ews\".\"configuration\".\"request_timeout\""},
 	AssetFilter:     whereHelpernull_JSON{field: "\"ews\".\"configuration\".\"asset_filter\""},
@@ -296,8 +310,8 @@ func (r *configurationR) GetAssets() AssetSlice {
 type configurationL struct{}
 
 var (
-	configurationAllColumns            = []string{"id", "client_id", "client_secret", "tenant_id", "refresh_interval", "request_timeout", "asset_filter", "active", "enable", "project_ids", "user_id"}
-	configurationColumnsWithoutDefault = []string{"client_id", "client_secret", "tenant_id"}
+	configurationAllColumns            = []string{"id", "client_id", "client_secret", "tenant_id", "service_user_upn", "room_list_upn", "refresh_interval", "request_timeout", "asset_filter", "active", "enable", "project_ids", "user_id"}
+	configurationColumnsWithoutDefault = []string{"client_id", "client_secret", "tenant_id", "service_user_upn", "room_list_upn"}
 	configurationColumnsWithDefault    = []string{"id", "refresh_interval", "request_timeout", "asset_filter", "active", "enable", "project_ids", "user_id"}
 	configurationPrimaryKeyColumns     = []string{"id"}
 	configurationGeneratedColumns      = []string{}

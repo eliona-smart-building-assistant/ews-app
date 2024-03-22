@@ -220,15 +220,23 @@ components:
           nullable: true
         clientId:
           type: string
-          description: Client ID. Only for MS Graph.
+          description: Client ID
           nullable: true
         clientSecret:
           type: string
-          description: Client Secret. Only for MS Graph.
+          description: Client Secret
           nullable: true
         tenantId:
           type: string
-          description: Tenant ID. Only for MS Graph.
+          description: Tenant ID
+          nullable: true
+        serviceUserUPN:
+          type: string
+          description: Service user email address.
+          nullable: true
+        roomListUPN:
+          type: string
+          description: Email address of the room list that will be imported to Eliona.
           nullable: true
         enable:
           type: boolean

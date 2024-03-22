@@ -22,6 +22,8 @@ create table if not exists ews.configuration
 	client_id            text not null,
 	client_secret        text not null,
 	tenant_id            text not null,
+	service_user_upn     text not null,
+	room_list_upn        text not null,
 	refresh_interval     integer not null default 60,
 	request_timeout      integer not null default 120,
 	asset_filter         json,

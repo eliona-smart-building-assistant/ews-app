@@ -15,14 +15,20 @@ type Configuration struct {
 	// Internal identifier for the configured API (created automatically).
 	Id *int64 `json:"id,omitempty"`
 
-	// Client ID. Only for MS Graph.
+	// Client ID
 	ClientId *string `json:"clientId,omitempty"`
 
-	// Client Secret. Only for MS Graph.
+	// Client Secret
 	ClientSecret *string `json:"clientSecret,omitempty"`
 
-	// Tenant ID. Only for MS Graph.
+	// Tenant ID
 	TenantId *string `json:"tenantId,omitempty"`
+
+	// Service user email address.
+	ServiceUserUPN *string `json:"serviceUserUPN,omitempty"`
+
+	// Email address of the room list that will be imported to Eliona.
+	RoomListUPN *string `json:"roomListUPN,omitempty"`
 
 	// Flag to enable or disable fetching from this API
 	Enable *bool `json:"enable,omitempty"`

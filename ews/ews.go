@@ -102,9 +102,11 @@ type roomId struct {
 }
 
 func (h *EWSHelper) GetAssets(config apiserver.Configuration) (model.Root, error) {
-	// TODO: Add service user name to config
-	// TODO: Query room lists
-	requestXML := `
+	// We might fetch also all room lists and include them into asset tree, but
+	// one room might belong to multiple room lists, which would make full
+	// Eliona mapping impossible. So let's give the user opprotunity to specify
+	// one room list to be synced from Exchange to Eliona.
+	requestXML := fmt.Sprintf(`
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                   xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
                   xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
@@ -112,19 +114,19 @@ func (h *EWSHelper) GetAssets(config apiserver.Configuration) (model.Root, error
         <t:RequestServerVersion Version="Exchange2013_SP1"/>
         <t:ExchangeImpersonation>
             <t:ConnectingSID>
-                <t:PrincipalName>app@z0vmd.onmicrosoft.com</t:PrincipalName>
+                <t:PrincipalName>%s</t:PrincipalName>
             </t:ConnectingSID>
         </t:ExchangeImpersonation>
     </soapenv:Header>
     <soapenv:Body>
         <m:GetRooms>
             <m:RoomList>
-                <t:EmailAddress>first.floor@z0vmd.onmicrosoft.com</t:EmailAddress>
+                <t:EmailAddress>%s</t:EmailAddress>
            </m:RoomList>
         </m:GetRooms>
     </soapenv:Body>
 </soapenv:Envelope>
-`
+`, *config.ServiceUserUPN, *config.RoomListUPN)
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
 		return model.Root{}, fmt.Errorf("requesting rooms: %v", err)

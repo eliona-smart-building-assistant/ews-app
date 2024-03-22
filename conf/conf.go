@@ -96,6 +96,8 @@ func dbConfigFromApiConfig(ctx context.Context, apiConfig apiserver.Configuratio
 	dbConfig.ClientID = *apiConfig.ClientId
 	dbConfig.ClientSecret = *apiConfig.ClientSecret
 	dbConfig.TenantID = *apiConfig.TenantId
+	dbConfig.ServiceUserUpn = *apiConfig.ServiceUserUPN
+	dbConfig.RoomListUpn = *apiConfig.RoomListUPN
 
 	dbConfig.ID = null.Int64FromPtr(apiConfig.Id).Int64
 	dbConfig.Enable = null.BoolFromPtr(apiConfig.Enable)
@@ -125,6 +127,8 @@ func apiConfigFromDbConfig(dbConfig *appdb.Configuration) (apiConfig apiserver.C
 	apiConfig.ClientId = &dbConfig.ClientID
 	apiConfig.ClientSecret = &dbConfig.ClientSecret
 	apiConfig.TenantId = &dbConfig.TenantID
+	apiConfig.ServiceUserUPN = &dbConfig.ServiceUserUpn
+	apiConfig.RoomListUPN = &dbConfig.RoomListUpn
 
 	apiConfig.Id = &dbConfig.ID
 	apiConfig.Enable = dbConfig.Enable.Ptr()
