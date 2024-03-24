@@ -20,11 +20,22 @@ import (
 	"ews/apiserver"
 	"ews/conf"
 	"fmt"
+	"time"
 
 	"github.com/eliona-smart-building-assistant/go-eliona/asset"
 	"github.com/eliona-smart-building-assistant/go-eliona/utils"
 	"github.com/eliona-smart-building-assistant/go-utils/common"
 )
+
+type Booking struct {
+	ID             string
+	Subject        string
+	OrganizerEmail string
+	Start          time.Time
+	End            time.Time
+}
+
+// Assets
 
 type Room struct {
 	Email string `eliona:"email,filterable" subtype:"info"`

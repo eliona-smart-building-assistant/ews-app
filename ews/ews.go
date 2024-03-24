@@ -152,7 +152,7 @@ func (h *EWSHelper) GetAssets(config apiserver.Configuration) (model.Root, error
 	}, nil
 }
 
-func (h *EWSHelper) GetRoomAppointments(roomEmail string, start, end time.Time) error {
+func (h *EWSHelper) GetRoomAppointments(roomEmail string, start, end time.Time) ([]model.Booking, error) {
 	requestXML := fmt.Sprintf(`
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                   xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
@@ -192,24 +192,27 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, start, end time.Time) 
 `, roomEmail, start.Format(time.RFC3339), end.Format(time.RFC3339), roomEmail)
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("getting room %v appointments: %v", roomEmail, err)
 	}
-
-	return h.parseAndPrintAppointments(responseXML)
-}
-
-func (h *EWSHelper) parseAndPrintAppointments(xmlBody string) error {
 	var env roomEventsEnvelope
-	if err := xml.Unmarshal([]byte(xmlBody), &env); err != nil {
-		return fmt.Errorf("unmarshaling XML: %v\n", err)
+	if err := xml.Unmarshal([]byte(responseXML), &env); err != nil {
+		return nil, fmt.Errorf("unmarshaling XML: %v", err)
 	}
 
+	var bookings []model.Booking
 	for _, message := range env.Body.FindItemResponse.ResponseMessages.FindItemResponseMessage {
 		for _, item := range message.RootFolder.Items.CalendarItem {
-			fmt.Printf("Subject: %s, Start: %s, End: %s\n", item.Subject, item.Start, item.End)
+			bookings = append(bookings, model.Booking{
+				ID:             item.ItemId.Id,
+				Subject:        item.Subject,
+				OrganizerEmail: item.Organizer.Mailbox.EmailAddress,
+				Start:          item.Start,
+				End:            item.End,
+			})
 		}
 	}
-	return nil
+
+	return bookings, nil
 }
 
 type roomEventsEnvelope struct {
@@ -249,14 +252,14 @@ type calendarItem struct {
 	ItemId           itemId    `xml:"ItemId"`
 	Subject          string    `xml:"Subject"`
 	DateTimeReceived string    `xml:"DateTimeReceived"`
-	Start            string    `xml:"Start"`
-	End              string    `xml:"End"`
+	Start            time.Time `xml:"Start"`
+	End              time.Time `xml:"End"`
 	Organizer        organizer `xml:"Organizer"`
 }
 
 type itemId struct {
-	Id        string `xml:"Id,attr"`
-	ChangeKey string `xml:"ChangeKey,attr"`
+	Id        string `xml:"Id,attr"`        // Persistent
+	ChangeKey string `xml:"ChangeKey,attr"` // Essentially a hash to notice changes
 }
 
 type organizer struct {
