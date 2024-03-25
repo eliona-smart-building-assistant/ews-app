@@ -3,8 +3,10 @@ package booking
 import (
 	"bytes"
 	"encoding/json"
+	"ews/model"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/eliona-smart-building-assistant/go-utils/log"
 	"github.com/gorilla/websocket"
@@ -20,16 +22,27 @@ func NewClient(baseURL string) *client {
 	}
 }
 
-type BookingRequest struct {
-	AssetIds    []int  `json:"assetIds"`
-	OrganizerID string `json:"organizerID"`
-	Start       string `json:"start"`
-	End         string `json:"end"`
-	EventName   string `json:"eventName,omitempty"`
-	Description string `json:"description,omitempty"`
+func (c *client) Book(bookings []model.Booking) error {
+	var convertedBookings []bookingRequest
+	for _, b := range bookings {
+		convertedBookings = append(convertedBookings, bookingRequest{
+			AssetIds:    []int{1}, // todo: assetIDs
+			OrganizerID: b.OrganizerEmail,
+			Start:       b.Start,
+			End:         b.End,
+		})
+	}
+	return c.book(convertedBookings)
 }
 
-func (c *client) Book(bookings []BookingRequest) error {
+type bookingRequest struct {
+	AssetIds    []int     `json:"assetIds"`
+	OrganizerID string    `json:"organizerID"`
+	Start       time.Time `json:"start"`
+	End         time.Time `json:"end"`
+}
+
+func (c *client) book(bookings []bookingRequest) error {
 	body, err := json.Marshal(bookings)
 	if err != nil {
 		return err
@@ -41,7 +54,7 @@ func (c *client) Book(bookings []BookingRequest) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNoContent {
+	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 

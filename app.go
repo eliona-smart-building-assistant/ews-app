@@ -120,7 +120,10 @@ func collectResources(config apiserver.Configuration) error {
 		log.Error("EWS", "getting appointments: %v", err)
 		return err
 	}
-	fmt.Println(appointments)
+	bc := booking.NewClient("http://localhost:3031/v1")
+	if err := bc.Book(appointments); err != nil {
+		log.Error("Booking", "booking appointments: %v", err)
+	}
 
 	appointment := ews.Appointment{
 		Subject:   "Eliona booking",
