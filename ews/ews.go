@@ -27,15 +27,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/eliona-smart-building-assistant/go-utils/log"
 	"golang.org/x/oauth2/clientcredentials"
 )
 
 type EWSHelper struct {
-	Client *http.Client
-	EwsURL string
+	Client       *http.Client
+	EwsURL       string
+	serviceUser  string
+	addressCache map[string]string
 }
 
-func NewEWSHelper(clientID, tenantID, clientSecret string) *EWSHelper {
+func NewEWSHelper(clientID, tenantID, clientSecret, serviceUser string) *EWSHelper {
 	oauth2Config := clientcredentials.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
@@ -45,8 +48,10 @@ func NewEWSHelper(clientID, tenantID, clientSecret string) *EWSHelper {
 
 	httpClient := oauth2Config.Client(context.Background())
 	return &EWSHelper{
-		Client: httpClient,
-		EwsURL: "https://outlook.office365.com/EWS/Exchange.asmx",
+		Client:       httpClient,
+		EwsURL:       "https://outlook.office365.com/EWS/Exchange.asmx",
+		serviceUser:  serviceUser,
+		addressCache: make(map[string]string),
 	}
 }
 
@@ -126,7 +131,7 @@ func (h *EWSHelper) GetAssets(config apiserver.Configuration) (model.Root, error
         </m:GetRooms>
     </soapenv:Body>
 </soapenv:Envelope>
-`, *config.ServiceUserUPN, *config.RoomListUPN)
+`, h.serviceUser, *config.RoomListUPN)
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
 		return model.Root{}, fmt.Errorf("requesting rooms: %v", err)
@@ -202,10 +207,14 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, start, end time.Time) 
 	var bookings []model.Booking
 	for _, message := range env.Body.FindItemResponse.ResponseMessages.FindItemResponseMessage {
 		for _, item := range message.RootFolder.Items.CalendarItem {
+			email, err := h.resolveDN(item.Organizer.Mailbox.EmailAddress)
+			if err != nil {
+				return nil, fmt.Errorf("resolving distinguished name '%s': %v", item.Organizer.Mailbox.EmailAddress, err)
+			}
 			bookings = append(bookings, model.Booking{
 				ID:             item.ItemId.Id,
 				Subject:        item.Subject,
-				OrganizerEmail: item.Organizer.Mailbox.EmailAddress,
+				OrganizerEmail: email,
 				Start:          item.Start,
 				End:            item.End,
 			})
@@ -268,7 +277,7 @@ type organizer struct {
 
 type mailbox struct {
 	Name         string `xml:"Name"`
-	EmailAddress string `xml:"EmailAddress"`
+	EmailAddress string `xml:"EmailAddress"` // This might be either email address, or Legacy DN.
 	RoutingType  string `xml:"RoutingType"`
 	MailboxType  string `xml:"MailboxType"`
 }
@@ -355,4 +364,85 @@ func formatAttendees(attendees []string) string {
             </t:Attendee>`, email))
 	}
 	return attendeeXML.String()
+}
+
+// resolveDN translates the distinguished name to a SMTP one.
+func (h *EWSHelper) resolveDN(name string) (string, error) {
+	if smtp, found := h.addressCache[name]; found {
+		return smtp, nil
+	}
+	// Docs say the reply might contain SMTP address sometimes. No need to resolve that.
+	if isSMTPAddress(name) {
+		h.addressCache[name] = name
+		return name, nil
+	}
+	requestXML := fmt.Sprintf(`
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+                  xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+    <soapenv:Header>
+        <t:RequestServerVersion Version="Exchange2013_SP1"/>
+        <t:ExchangeImpersonation>
+            <t:ConnectingSID>
+                <t:PrincipalName>%s</t:PrincipalName>
+            </t:ConnectingSID>
+        </t:ExchangeImpersonation>
+    </soapenv:Header>
+    <soapenv:Body>
+        <m:ResolveNames ReturnFullContactData="true" SearchScope="ActiveDirectory">
+            <m:UnresolvedEntry>%s</m:UnresolvedEntry>
+        </m:ResolveNames>
+    </soapenv:Body>
+</soapenv:Envelope>
+`, h.serviceUser, name)
+
+	responseXML, err := h.sendRequest(requestXML)
+	if err != nil {
+		return "", fmt.Errorf("error resolving Legacy DN: %v", err)
+	}
+
+	var resp resolveNamesResponse
+	if err := xml.Unmarshal([]byte(responseXML), &resp); err != nil {
+		return "", fmt.Errorf("error unmarshaling XML from ResolveNames response: %v", err)
+	}
+	responseMessages := resp.Body.ResolveNamesResponse.ResponseMessages.ResolveNamesResponseMessage
+	if len(responseMessages) != 1 {
+		log.Debug("ews", responseXML)
+		return "", fmt.Errorf("EWS reported an error")
+	}
+	resolutionMessages := responseMessages[0].ResolutionSet.Resolution
+	if rms := len(resolutionMessages); rms != 1 {
+		log.Debug("ews", "%v", resolutionMessages)
+		return "", fmt.Errorf("EWS returned %v != 1 resolutionMessages", rms)
+	}
+
+	smtpAddress := resolutionMessages[0].Mailbox.EmailAddress
+	h.addressCache[name] = smtpAddress
+	return smtpAddress, nil
+}
+
+func isSMTPAddress(s string) bool {
+	// Naive check, just to recognize from Legacy DN.
+	return strings.Contains(s, "@")
+}
+
+type resolveNamesResponse struct {
+	XMLName xml.Name `xml:"Envelope"`
+	Body    struct {
+		ResolveNamesResponse struct {
+			ResponseMessages struct {
+				ResolveNamesResponseMessage []struct {
+					ResolutionSet struct {
+						TotalItemsInView        string `xml:"TotalItemsInView,attr"`
+						IncludesLastItemInRange string `xml:"IncludesLastItemInRange,attr"`
+						Resolution              []struct {
+							Mailbox struct {
+								EmailAddress string `xml:"EmailAddress"`
+							} `xml:"Mailbox"`
+						} `xml:"Resolution"`
+					} `xml:"ResolutionSet"`
+				} `xml:"ResolveNamesResponseMessage"`
+			} `xml:"ResponseMessages"`
+		} `xml:"ResolveNamesResponse"`
+	} `xml:"Body"`
 }

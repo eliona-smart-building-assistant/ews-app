@@ -23,6 +23,7 @@ import (
 	"ews/conf"
 	"ews/eliona"
 	"ews/ews"
+	"ews/model"
 	"fmt"
 	"net/http"
 	"sync"
@@ -103,25 +104,42 @@ func collectData() {
 }
 
 func collectResources(config apiserver.Configuration) error {
-	ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret)
+	// Note: EWSHelper has an address cache and this resets it in each sync.
+	// If there is a need for optimization, create EWS helper only once per config.
+	ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret, *config.ServiceUserUPN)
 	root, err := ewsHelper.GetAssets(config)
 	if err != nil {
-		log.Error("EWS", "getting assets: %v", err)
+		log.Error("EWS", "getting EWS assets: %v", err)
 		return err
 	}
 
 	if err := eliona.CreateAssets(config, &root); err != nil {
-		log.Error("eliona", "creating assets: %v", err)
+		log.Error("eliona", "creating assets in Eliona: %v", err)
 		return err
 	}
 
-	appointments, err := ewsHelper.GetRoomAppointments("silent.room@z0vmd.onmicrosoft.com", time.Now().Add(-8*time.Hour), time.Now().Add(8*time.Hour))
+	assets, err := conf.GetAssets()
 	if err != nil {
-		log.Error("EWS", "getting appointments: %v", err)
+		log.Error("conf", "getting assets from DB: %v", err)
 		return err
 	}
+	var bookings []model.Booking
+	for _, a := range assets {
+		if !a.AssetID.Valid {
+			continue
+		}
+		appointments, err := ewsHelper.GetRoomAppointments(a.ProviderID, time.Now().Add(-8*time.Hour), time.Now().Add(8*time.Hour))
+		if err != nil {
+			log.Error("EWS", "getting appointments: %v", err)
+			return err
+		}
+		for i := range appointments {
+			appointments[i].AssetID = a.AssetID.Int32
+		}
+		bookings = append(bookings, appointments...)
+	}
 	bc := booking.NewClient("http://localhost:3031/v1")
-	if err := bc.Book(appointments); err != nil {
+	if err := bc.Book(bookings); err != nil {
 		log.Error("Booking", "booking appointments: %v", err)
 	}
 

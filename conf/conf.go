@@ -26,6 +26,7 @@ import (
 
 	"github.com/eliona-smart-building-assistant/go-eliona/frontend"
 	"github.com/eliona-smart-building-assistant/go-utils/common"
+	"github.com/eliona-smart-building-assistant/go-utils/log"
 	"github.com/volatiletech/null/v8"
 	"github.com/volatiletech/sqlboiler/v4/boil"
 )
@@ -222,6 +223,22 @@ func GetAssetById(assetId int32) (appdb.Asset, error) {
 		return appdb.Asset{}, fmt.Errorf("fetching asset: %v", err)
 	}
 	return *asset, nil
+}
+
+func GetAssets() ([]appdb.Asset, error) {
+	assets, err := appdb.Assets().AllG(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("fetching assets: %v", err)
+	}
+	assetsSlice := make([]appdb.Asset, 0, len(assets))
+	for _, asset := range assets {
+		if asset == nil {
+			log.Warn("conf", "Asset is nil in slice, shouldn't happen")
+			continue
+		}
+		assetsSlice = append(assetsSlice, *asset)
+	}
+	return assetsSlice, nil
 }
 
 func GetConfigForAsset(asset appdb.Asset) (apiserver.Configuration, error) {

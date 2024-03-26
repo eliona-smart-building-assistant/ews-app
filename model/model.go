@@ -29,6 +29,7 @@ import (
 
 type Booking struct {
 	ID             string
+	AssetID        int32
 	Subject        string
 	OrganizerEmail string
 	Start          time.Time
