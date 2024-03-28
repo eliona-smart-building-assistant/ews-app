@@ -198,7 +198,11 @@ func collectResources(config apiserver.Configuration) error {
 
 func listenForBookings() {
 	baseURL := "http://localhost:3031/v1"
-	assetIDs := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	assetIDs, err := conf.GetWatchedAssetIDs()
+	if err != nil {
+		log.Error("conf", "getting list of assetIDs to watch: %v", err)
+		return
+	}
 	for { // We want to restart listening in case something breaks.
 		bookingsClient := booking.NewClient(baseURL)
 		bookingsChan, err := bookingsClient.ListenForBookings(assetIDs)

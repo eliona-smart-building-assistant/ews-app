@@ -242,6 +242,21 @@ func GetAssets() ([]appdb.Asset, error) {
 	return assetsSlice, nil
 }
 
+func GetWatchedAssetIDs() ([]int, error) {
+	assets, err := GetAssets()
+	if err != nil {
+		return nil, err
+	}
+	assetIDs := make([]int, 0, len(assets))
+	for _, a := range assets {
+		if !a.AssetID.Valid {
+			continue
+		}
+		assetIDs = append(assetIDs, int(a.AssetID.Int32))
+	}
+	return assetIDs, nil
+}
+
 func GetConfigForAsset(asset appdb.Asset) (apiserver.Configuration, error) {
 	c, err := asset.Configuration().OneG(context.Background())
 	if err != nil {
