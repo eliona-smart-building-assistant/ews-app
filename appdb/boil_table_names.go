@@ -5,8 +5,10 @@ package appdb
 
 var TableNames = struct {
 	Asset         string
+	Booking       string
 	Configuration string
 }{
 	Asset:         "asset",
+	Booking:       "booking",
 	Configuration: "configuration",
 }

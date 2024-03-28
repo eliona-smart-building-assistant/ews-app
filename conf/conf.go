@@ -32,6 +32,7 @@ import (
 )
 
 var ErrBadRequest = errors.New("bad request")
+var ErrNotFound = errors.New("not found")
 
 func InsertConfig(ctx context.Context, config apiserver.Configuration) (apiserver.Configuration, error) {
 	dbConfig, err := dbConfigFromApiConfig(ctx, config)
@@ -247,4 +248,28 @@ func GetConfigForAsset(asset appdb.Asset) (apiserver.Configuration, error) {
 		return apiserver.Configuration{}, fmt.Errorf("fetching configuration: %v", err)
 	}
 	return apiConfigFromDbConfig(c)
+}
+
+func InsertBooking(booking appdb.Booking) error {
+	return booking.InsertG(context.Background(), boil.Infer())
+}
+
+func GetBookingByExchangeID(exchangeID string) (appdb.Booking, error) {
+	booking, err := appdb.Bookings(
+		appdb.BookingWhere.ExchangeID.EQ(null.StringFrom(exchangeID)),
+	).OneG(context.Background())
+	if errors.Is(err, sql.ErrNoRows) {
+		return appdb.Booking{}, ErrNotFound
+	} else if err != nil {
+		return appdb.Booking{}, fmt.Errorf("fetching booking from database: %v", err)
+	}
+	return *booking, nil
+}
+
+func UpdateBooking(booking appdb.Booking) error {
+	_, err := booking.UpdateG(
+		context.Background(),
+		boil.Whitelist(appdb.BookingColumns.ExchangeChangeKey),
+	)
+	return err
 }

@@ -213,6 +213,7 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, start, end time.Time) 
 			}
 			bookings = append(bookings, model.Booking{
 				ID:             item.ItemId.Id,
+				ChangeKey:      item.ItemId.ChangeKey,
 				Subject:        item.Subject,
 				OrganizerEmail: email,
 				Start:          item.Start,

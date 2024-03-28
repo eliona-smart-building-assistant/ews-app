@@ -17,6 +17,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"ews/apiserver"
 	"ews/apiservices"
 	"ews/booking"
@@ -37,6 +38,7 @@ import (
 	"github.com/eliona-smart-building-assistant/go-utils/db"
 	utilshttp "github.com/eliona-smart-building-assistant/go-utils/http"
 	"github.com/eliona-smart-building-assistant/go-utils/log"
+	"github.com/volatiletech/null/v8"
 )
 
 func initialization() {
@@ -123,7 +125,9 @@ func collectResources(config apiserver.Configuration) error {
 		log.Error("conf", "getting assets from DB: %v", err)
 		return err
 	}
-	var bookings []model.Booking
+	var newBookings []model.Booking
+	var changedBookings []model.Booking
+
 	for _, a := range assets {
 		if !a.AssetID.Valid {
 			continue
@@ -135,13 +139,47 @@ func collectResources(config apiserver.Configuration) error {
 		}
 		for i := range appointments {
 			appointments[i].AssetID = a.AssetID.Int32
+			a := appointments[i]
+
+			booking, err := conf.GetBookingByExchangeID(a.ID)
+			if err != nil && !errors.Is(err, conf.ErrNotFound) {
+				log.Error("conf", "getting booking for exchange ID %s: %v", a.ID, err)
+				return err
+			} else if errors.Is(err, conf.ErrNotFound) {
+				// Booking is new
+				newBookings = append(newBookings, a)
+
+				booking.ExchangeID = null.StringFrom(a.ID)
+				booking.ExchangeChangeKey = null.StringFrom(a.ChangeKey)
+				if err := conf.InsertBooking(booking); err != nil {
+					log.Error("conf", "inserting booking: %v", err)
+					return err
+				}
+				continue
+			}
+
+			if !booking.ExchangeChangeKey.Valid || booking.ExchangeChangeKey.String != a.ChangeKey {
+				// Booking has changed.
+				changedBookings = append(changedBookings, a)
+				booking.ExchangeChangeKey = null.StringFrom(a.ChangeKey)
+				err := conf.UpdateBooking(booking)
+				if err != nil {
+					log.Error("conf", "updating booking: %v", err)
+					return err
+				}
+				continue
+			}
+
+			// Booking has not changed, skip.
+			continue
 		}
-		bookings = append(bookings, appointments...)
 	}
 	bc := booking.NewClient("http://localhost:3031/v1")
-	if err := bc.Book(bookings); err != nil {
+	if err := bc.Book(newBookings); err != nil {
 		log.Error("Booking", "booking appointments: %v", err)
 	}
+
+	// todo: changedBookings
 
 	appointment := ews.Appointment{
 		Subject:   "Eliona booking",

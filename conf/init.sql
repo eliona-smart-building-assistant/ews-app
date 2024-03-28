@@ -43,5 +43,13 @@ create table if not exists ews.asset
 	asset_id         integer
 );
 
+create table if not exists ews.booking
+(
+	id                  bigserial primary key,
+	exchange_id         text,
+	exchange_change_key text,
+	booking_id          int
+);
+
 -- Makes the new objects available for all other init steps
 commit;
