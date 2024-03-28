@@ -83,21 +83,21 @@ func (c *client) subscribeBookings(assetIDs []int) (*websocket.Conn, error) {
 }
 
 type Booking struct {
-	AssetIds    []int  `json:"assetIds"`
-	OrganizerID string `json:"organizerID"`
-	Start       string `json:"start"`
-	End         string `json:"end"`
-	EventName   string `json:"eventName,omitempty"`
-	Description string `json:"description,omitempty"`
+	AssetIds    []int32   `json:"assetIds"`
+	OrganizerID string    `json:"organizerID"`
+	Start       time.Time `json:"start"`
+	End         time.Time `json:"end"`
+	EventName   string    `json:"eventName,omitempty"`
+	Description string    `json:"description,omitempty"`
 }
 
-func (c *client) ListenForBookings(assetIDs []int) (<-chan Booking, error) {
+func (c *client) ListenForBookings(assetIDs []int) (<-chan model.Booking, error) {
 	conn, err := c.subscribeBookings(assetIDs)
 	if err != nil {
 		return nil, err
 	}
 	log.Debug("eliona-booking", "Subscribed")
-	bookingsChan := make(chan Booking)
+	bookingsChan := make(chan model.Booking)
 
 	go func() {
 		defer close(bookingsChan)
@@ -117,7 +117,18 @@ func (c *client) ListenForBookings(assetIDs []int) (<-chan Booking, error) {
 				continue // Skip this message and continue listening
 			}
 
-			bookingsChan <- booking
+			if len(booking.AssetIds) != 1 {
+				log.Error("eliona-booking", "The request contains %v != 1 assetIDs, which is currently unsupported.", len(booking.AssetIds))
+				continue
+			}
+
+			bookingsChan <- model.Booking{
+				AssetID:        booking.AssetIds[0],
+				Subject:        booking.EventName,
+				OrganizerEmail: booking.OrganizerID,
+				Start:          booking.Start,
+				End:            booking.End,
+			}
 		}
 	}()
 
