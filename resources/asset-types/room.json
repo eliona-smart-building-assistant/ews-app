@@ -8,6 +8,16 @@
 				"de": "E-Mail Adresse",
 				"en": "E-Mail Address"
 			}
+		},
+		{
+			"enable": true,
+			"name": "occupancy",
+			"subtype": "input",
+			"translation": {
+				"de": "Besetzt",
+				"en": "Occupied"
+			},
+			"isDigital": true
 		}
 	],
 	"custom": false,
