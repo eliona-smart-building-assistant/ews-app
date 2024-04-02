@@ -57,6 +57,7 @@ func initialization() {
 }
 
 var once sync.Once
+var resubscribeTrigger = make(chan struct{}, 1)
 
 func collectData() {
 	configs, err := conf.GetConfigs(context.Background())
@@ -101,7 +102,34 @@ func collectData() {
 			log.Info("main", "Collecting %d finished.", *config.Id)
 
 			time.Sleep(time.Second * time.Duration(config.RefreshInterval))
-		}, config, *config.Id)
+		}, config, fmt.Sprintf("collection_%v", *config.Id))
+
+		common.RunOnceWithParam(func(config apiserver.Configuration) {
+			go func() {
+				log.Info("main", "Subscription %d started.", *config.Id)
+
+				listenForBookings(config)
+
+				log.Info("main", "Subscription %d exited. Resubscribing...", *config.Id)
+				triggerResubscribe()
+			}()
+			for {
+				// Wait for the time duration or a trigger
+				select {
+				case <-resubscribeTrigger:
+					log.Info("main", "Resubscription trigerred.")
+					return
+				}
+			}
+		}, config, fmt.Sprintf("subscription_%v", *config.Id))
+	}
+}
+
+func triggerResubscribe() {
+	// Non-blocking Send: This ensures that sending to the channel doesn't block if the channel buffer is full.
+	select {
+	case resubscribeTrigger <- struct{}{}:
+	default:
 	}
 }
 
@@ -115,9 +143,12 @@ func collectResources(config apiserver.Configuration) error {
 		return err
 	}
 
-	if err := eliona.CreateAssets(config, &root); err != nil {
+	if cnt, err := eliona.CreateAssets(config, &root); err != nil {
 		log.Error("eliona", "creating assets in Eliona: %v", err)
 		return err
+	} else if cnt > 0 {
+		// New assets are present, need to subscribe again to include these.
+		triggerResubscribe()
 	}
 
 	assets, err := conf.GetAssets()
@@ -196,7 +227,7 @@ func collectResources(config apiserver.Configuration) error {
 	return nil
 }
 
-func listenForBookings() {
+func listenForBookings(config apiserver.Configuration) {
 	baseURL := "http://localhost:3031/v1"
 	assetIDs, err := conf.GetWatchedAssetIDs()
 	if err != nil {

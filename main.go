@@ -51,7 +51,6 @@ func main() {
 	common.WaitForWithOs(
 		common.Loop(collectData, time.Second),
 		listenApi,
-		listenForBookings,
 	)
 
 	log.Info("main", "Terminate the app.")

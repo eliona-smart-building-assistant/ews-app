@@ -25,19 +25,20 @@ import (
 	"github.com/eliona-smart-building-assistant/go-utils/log"
 )
 
-func CreateAssets(config apiserver.Configuration, root asset.Root) error {
+func CreateAssets(config apiserver.Configuration, root asset.Root) (totalCreated int, err error) {
 	for _, projectId := range *config.ProjectIDs {
 		assetsCreated, err := asset.CreateAssets(root, projectId)
 		if err != nil {
-			return err
+			return 0, err
 		}
+		totalCreated += assetsCreated
 		if assetsCreated != 0 {
 			if err := notifyUser(*config.UserId, projectId, assetsCreated); err != nil {
-				return fmt.Errorf("notifying user about CAC: %v", err)
+				return 0, fmt.Errorf("notifying user about CAC: %v", err)
 			}
 		}
 	}
-	return nil
+	return totalCreated, nil
 }
 
 func notifyUser(userId string, projectId string, assetsCreated int) error {
