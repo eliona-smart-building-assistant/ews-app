@@ -95,6 +95,14 @@ func collectData() {
 		}
 
 		common.RunOnceWithParam(func(config apiserver.Configuration) {
+			log.Info("main", "Subscription %d started.", *config.Id)
+
+			listenForBookings(config)
+
+			log.Info("main", "Subscription %d exited. Resubscribing...", *config.Id)
+		}, config, fmt.Sprintf("subscription_%v", *config.Id))
+
+		common.RunOnceWithParam(func(config apiserver.Configuration) {
 			log.Info("main", "Collecting %d started.", *config.Id)
 			if err := collectResources(config); err != nil {
 				return // Error is handled in the method itself.
@@ -103,25 +111,6 @@ func collectData() {
 
 			time.Sleep(time.Second * time.Duration(config.RefreshInterval))
 		}, config, fmt.Sprintf("collection_%v", *config.Id))
-
-		common.RunOnceWithParam(func(config apiserver.Configuration) {
-			go func() {
-				log.Info("main", "Subscription %d started.", *config.Id)
-
-				listenForBookings(config)
-
-				log.Info("main", "Subscription %d exited. Resubscribing...", *config.Id)
-				triggerResubscribe()
-			}()
-			for {
-				// Wait for the time duration or a trigger
-				select {
-				case <-resubscribeTrigger:
-					log.Info("main", "Resubscription trigerred.")
-					return
-				}
-			}
-		}, config, fmt.Sprintf("subscription_%v", *config.Id))
 	}
 }
 
@@ -142,6 +131,7 @@ func collectResources(config apiserver.Configuration) error {
 		log.Error("EWS", "getting EWS assets: %v", err)
 		return err
 	}
+	triggerResubscribe()
 
 	if cnt, err := eliona.CreateAssets(config, &root); err != nil {
 		log.Error("eliona", "creating assets in Eliona: %v", err)
@@ -234,19 +224,26 @@ func listenForBookings(config apiserver.Configuration) {
 		log.Error("conf", "getting list of assetIDs to watch: %v", err)
 		return
 	}
-	for { // We want to restart listening in case something breaks.
-		bookingsClient := booking.NewClient(baseURL)
-		bookingsChan, err := bookingsClient.ListenForBookings(assetIDs)
-		if err != nil {
-			log.Error("eliona-bookings", "listening for booking changes: %v", err)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		select {
+		case <-resubscribeTrigger:
+			log.Info("main", "Resubscription trigerred.")
+			cancel()
 			return
 		}
-		for book := range bookingsChan {
-			fmt.Println(book)
-			// TODO: Actually use the booking.
-		}
-		time.Sleep(time.Second * 5) // Give the server a little break.
+	}()
+	bookingsClient := booking.NewClient(baseURL)
+	bookingsChan, err := bookingsClient.ListenForBookings(ctx, assetIDs)
+	if err != nil {
+		log.Error("eliona-bookings", "listening for booking changes: %v", err)
+		return
 	}
+	for book := range bookingsChan {
+		fmt.Println(book)
+		// TODO: Actually use the booking.
+	}
+	fmt.Println("canh clsd")
 }
 
 // listenApi starts the API server and listen for requests

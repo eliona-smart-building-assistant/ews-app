@@ -2,7 +2,9 @@ package booking
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"ews/model"
 	"fmt"
 	"net/http"
@@ -91,7 +93,7 @@ type Booking struct {
 	Description string    `json:"description,omitempty"`
 }
 
-func (c *client) ListenForBookings(assetIDs []int) (<-chan model.Booking, error) {
+func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan model.Booking, error) {
 	conn, err := c.subscribeBookings(assetIDs)
 	if err != nil {
 		return nil, err
@@ -104,7 +106,26 @@ func (c *client) ListenForBookings(assetIDs []int) (<-chan model.Booking, error)
 		defer conn.Close()
 
 		for {
-			_, message, err := conn.ReadMessage()
+			message, err := func() ([]byte, error) {
+				done := make(chan struct{})
+				var message []byte
+				var err error
+				go func() {
+					defer close(done)
+					_, message, err = conn.ReadMessage()
+				}()
+
+				// Wait for message read, context cancellation, or a timeout
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-done:
+					return message, err
+				}
+			}()
+			if errors.Is(err, context.Canceled) {
+				return
+			}
 			if err != nil {
 				log.Error("eliona-booking", "Error reading from WebSocket: %v", err)
 				return
