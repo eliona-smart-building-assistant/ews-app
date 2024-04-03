@@ -233,6 +233,7 @@ func listenForBookings(config apiserver.Configuration) {
 			return
 		}
 	}()
+
 	bookingsClient := booking.NewClient(baseURL)
 	bookingsChan, err := bookingsClient.ListenForBookings(ctx, assetIDs)
 	if err != nil {
@@ -240,10 +241,26 @@ func listenForBookings(config apiserver.Configuration) {
 		return
 	}
 	for book := range bookingsChan {
+		// todo: save the booking locally
 		fmt.Println(book)
-		// TODO: Actually use the booking.
+		asset, err := conf.GetAssetById(book.AssetID)
+		if err != nil {
+			log.Error("conf", "getting asset ID %v: %v", book.AssetID, err)
+			continue
+		}
+		app := ews.Appointment{
+			Subject:  "Eliona booking",
+			Start:    book.Start,
+			End:      book.End,
+			Location: asset.ProviderID,
+		}
+		// We want to book on behalf of the organizer, thus we need to create a helper for each booking.
+		ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret, book.OrganizerEmail)
+		if err := ewsHelper.CreateAppointment(app); err != nil {
+			log.Error("ews", "Creating appointment: %v", err)
+			continue
+		}
 	}
-	fmt.Println("canh clsd")
 }
 
 // listenApi starts the API server and listen for requests
