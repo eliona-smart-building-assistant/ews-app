@@ -212,12 +212,12 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, start, end time.Time) 
 				return nil, fmt.Errorf("resolving distinguished name '%s': %v", item.Organizer.Mailbox.EmailAddress, err)
 			}
 			bookings = append(bookings, model.Booking{
-				ID:             item.ItemId.Id,
-				ChangeKey:      item.ItemId.ChangeKey,
-				Subject:        item.Subject,
-				OrganizerEmail: email,
-				Start:          item.Start,
-				End:            item.End,
+				ExchangeID:        item.ItemId.Id,
+				ExchangeChangeKey: item.ItemId.ChangeKey,
+				Subject:           item.Subject,
+				OrganizerEmail:    email,
+				Start:             item.Start,
+				End:               item.End,
 			})
 		}
 	}
@@ -284,6 +284,7 @@ type mailbox struct {
 }
 
 type Appointment struct {
+	Organizer string
 	Subject   string
 	Start     time.Time
 	End       time.Time
@@ -291,7 +292,7 @@ type Appointment struct {
 	Attendees []string
 }
 
-func (h *EWSHelper) CreateAppointment(appointment Appointment) error {
+func (h *EWSHelper) CreateAppointment(appointment Appointment) (itemID, changeKey string, err error) {
 	requestBody := fmt.Sprintf(`
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                   xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
@@ -323,7 +324,7 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) error {
         </m:CreateItem>
     </soapenv:Body>
 </soapenv:Envelope>`,
-		"msgraph@z0vmd.onmicrosoft.com",
+		appointment.Organizer,
 		appointment.Subject,
 		appointment.Start.Format(time.RFC3339),
 		appointment.End.Format(time.RFC3339),
@@ -333,25 +334,31 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) error {
 
 	req, err := http.NewRequest("POST", h.EwsURL, bytes.NewBufferString(requestBody))
 	if err != nil {
-		return fmt.Errorf("error creating request: %w", err)
+		return "", "", fmt.Errorf("creating request: %w", err)
 	}
 
 	req.Header.Add("Content-Type", "text/xml; charset=utf-8")
 
 	resp, err := h.Client.Do(req)
 	if err != nil {
-		return fmt.Errorf("error sending request to EWS: %w", err)
+		return "", "", fmt.Errorf("sending request to EWS: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("error reading response body: %w", err)
+		return "", "", fmt.Errorf("reading response body: %w", err)
 	}
 
-	fmt.Println(string(respBody))
+	var env appointmentCreated
+	if err := xml.Unmarshal([]byte(respBody), &env); err != nil {
+		return "", "", fmt.Errorf("unmarshaling XML: %v", err)
+	}
 
-	return nil
+	itemID = env.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.Items.CalendarItem.ItemId.ID
+	changeKey = env.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.Items.CalendarItem.ItemId.ChangeKey
+
+	return itemID, changeKey, nil
 }
 
 func formatAttendees(attendees []string) string {
@@ -365,6 +372,28 @@ func formatAttendees(attendees []string) string {
             </t:Attendee>`, email))
 	}
 	return attendeeXML.String()
+}
+
+type appointmentCreated struct {
+	XMLName xml.Name `xml:"Envelope"`
+	Body    struct {
+		CreateItemResponse struct {
+			ResponseMessages struct {
+				CreateItemResponseMessage struct {
+					ResponseClass string `xml:"ResponseClass,attr"`
+					ResponseCode  string `xml:"ResponseCode"`
+					Items         struct {
+						CalendarItem struct {
+							ItemId struct {
+								ID        string `xml:"Id,attr"`
+								ChangeKey string `xml:"ChangeKey,attr"`
+							} `xml:"ItemId"`
+						} `xml:"CalendarItem"`
+					} `xml:"Items"`
+				} `xml:"CreateItemResponseMessage"`
+			} `xml:"ResponseMessages"`
+		} `xml:"CreateItemResponse"`
+	} `xml:"Body"`
 }
 
 // resolveDN translates the distinguished name to a SMTP one.

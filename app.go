@@ -20,6 +20,7 @@ import (
 	"errors"
 	"ews/apiserver"
 	"ews/apiservices"
+	"ews/appdb"
 	"ews/booking"
 	"ews/conf"
 	"ews/eliona"
@@ -131,7 +132,6 @@ func collectResources(config apiserver.Configuration) error {
 		log.Error("EWS", "getting EWS assets: %v", err)
 		return err
 	}
-	triggerResubscribe()
 
 	if cnt, err := eliona.CreateAssets(config, &root); err != nil {
 		log.Error("eliona", "creating assets in Eliona: %v", err)
@@ -162,16 +162,16 @@ func collectResources(config apiserver.Configuration) error {
 			appointments[i].AssetID = a.AssetID.Int32
 			a := appointments[i]
 
-			booking, err := conf.GetBookingByExchangeID(a.ID)
+			booking, err := conf.GetBookingByExchangeID(a.ExchangeID)
 			if err != nil && !errors.Is(err, conf.ErrNotFound) {
-				log.Error("conf", "getting booking for exchange ID %s: %v", a.ID, err)
+				log.Error("conf", "getting booking for exchange ID %s: %v", a.ExchangeID, err)
 				return err
 			} else if errors.Is(err, conf.ErrNotFound) {
 				// Booking is new
 				newBookings = append(newBookings, a)
 
-				booking.ExchangeID = null.StringFrom(a.ID)
-				booking.ExchangeChangeKey = null.StringFrom(a.ChangeKey)
+				booking.ExchangeID = null.StringFrom(a.ExchangeID)
+				booking.ExchangeChangeKey = null.StringFrom(a.ExchangeChangeKey)
 				if err := conf.InsertBooking(booking); err != nil {
 					log.Error("conf", "inserting booking: %v", err)
 					return err
@@ -179,10 +179,10 @@ func collectResources(config apiserver.Configuration) error {
 				continue
 			}
 
-			if !booking.ExchangeChangeKey.Valid || booking.ExchangeChangeKey.String != a.ChangeKey {
+			if !booking.ExchangeChangeKey.Valid || booking.ExchangeChangeKey.String != a.ExchangeChangeKey {
 				// Booking has changed.
 				changedBookings = append(changedBookings, a)
-				booking.ExchangeChangeKey = null.StringFrom(a.ChangeKey)
+				booking.ExchangeChangeKey = null.StringFrom(a.ExchangeChangeKey)
 				err := conf.UpdateBooking(booking)
 				if err != nil {
 					log.Error("conf", "updating booking: %v", err)
@@ -202,18 +202,6 @@ func collectResources(config apiserver.Configuration) error {
 
 	// todo: changedBookings
 
-	appointment := ews.Appointment{
-		Subject:   "Eliona booking",
-		Start:     time.Now().Add(2 * time.Hour),
-		End:       time.Now().Add(2*time.Hour + 10*time.Minute),
-		Location:  "silent.room@z0vmd.onmicrosoft.com",
-		Attendees: []string{"msgraph@z0vmd.onmicrosoft.com", "silent.room@z0vmd.onmicrosoft.com"},
-	}
-	err = ewsHelper.CreateAppointment(appointment)
-	if err != nil {
-		log.Error("EWS", "creating appointment: %v", err)
-		return err
-	}
 	return nil
 }
 
@@ -241,23 +229,34 @@ func listenForBookings(config apiserver.Configuration) {
 		return
 	}
 	for book := range bookingsChan {
-		// todo: save the booking locally
-		fmt.Println(book)
 		asset, err := conf.GetAssetById(book.AssetID)
 		if err != nil {
 			log.Error("conf", "getting asset ID %v: %v", book.AssetID, err)
 			continue
 		}
-		app := ews.Appointment{
-			Subject:  "Eliona booking",
-			Start:    book.Start,
-			End:      book.End,
-			Location: asset.ProviderID,
-		}
 		// We want to book on behalf of the organizer, thus we need to create a helper for each booking.
 		ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret, book.OrganizerEmail)
-		if err := ewsHelper.CreateAppointment(app); err != nil {
-			log.Error("ews", "Creating appointment: %v", err)
+		app := ews.Appointment{
+			Organizer: book.OrganizerEmail,
+			Subject:   "Eliona booking",
+			Start:     book.Start,
+			End:       book.End,
+			Location:  asset.ProviderID,
+			Attendees: []string{asset.ProviderID},
+		}
+		itemID, changeKey, err := ewsHelper.CreateAppointment(app)
+		if err != nil {
+			log.Error("ews", "creating appointment: %v", err)
+			continue
+		}
+		log.Debug("ews", "created a booking for %v", book.OrganizerEmail)
+		b := appdb.Booking{
+			ExchangeID:        null.StringFrom(itemID),
+			ExchangeChangeKey: null.StringFrom(changeKey),
+			BookingID:         null.Int32From(book.ElionaID),
+		}
+		if err := conf.InsertBooking(b); err != nil {
+			log.Error("conf", "inserting booking: %v", err)
 			continue
 		}
 	}

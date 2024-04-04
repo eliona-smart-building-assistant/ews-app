@@ -85,12 +85,11 @@ func (c *client) subscribeBookings(assetIDs []int) (*websocket.Conn, error) {
 }
 
 type Booking struct {
+	ID          int32
 	AssetIds    []int32   `json:"assetIds"`
 	OrganizerID string    `json:"organizerID"`
 	Start       time.Time `json:"start"`
 	End         time.Time `json:"end"`
-	EventName   string    `json:"eventName,omitempty"`
-	Description string    `json:"description,omitempty"`
 }
 
 func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan model.Booking, error) {
@@ -144,8 +143,8 @@ func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan 
 			}
 
 			bookingsChan <- model.Booking{
+				ElionaID:       booking.ID,
 				AssetID:        booking.AssetIds[0],
-				Subject:        booking.EventName,
 				OrganizerEmail: booking.OrganizerID,
 				Start:          booking.Start,
 				End:            booking.End,

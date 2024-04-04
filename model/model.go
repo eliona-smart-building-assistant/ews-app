@@ -28,13 +28,14 @@ import (
 )
 
 type Booking struct {
-	ID             string
-	ChangeKey      string
-	AssetID        int32
-	Subject        string
-	OrganizerEmail string
-	Start          time.Time
-	End            time.Time
+	ExchangeID        string
+	ExchangeChangeKey string
+	ElionaID          int32
+	AssetID           int32
+	Subject           string
+	OrganizerEmail    string
+	Start             time.Time
+	End               time.Time
 }
 
 // Assets
