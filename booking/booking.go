@@ -28,7 +28,7 @@ func (c *client) Book(bookings []model.Booking) error {
 	var convertedBookings []bookingRequest
 	for _, b := range bookings {
 		convertedBookings = append(convertedBookings, bookingRequest{
-			AssetIds:    []int{1}, // todo: assetIDs
+			AssetIds:    []int{int(b.AssetID)},
 			OrganizerID: b.OrganizerEmail,
 			Start:       b.Start,
 			End:         b.End,
