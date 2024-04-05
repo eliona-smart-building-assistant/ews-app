@@ -186,6 +186,10 @@ func collectResources(config apiserver.Configuration) error {
 
 			if booking.ExchangeChangeKey.String != a.ExchangeChangeKey {
 				// Booking has changed.
+				if !booking.BookingID.Valid {
+					// Booking not yet synced to Eliona
+					newBookings = append(newBookings, a)
+				}
 				changedBookings = append(changedBookings, a)
 				booking.ExchangeChangeKey = null.StringFrom(a.ExchangeChangeKey)
 				err := conf.UpdateBooking(booking)
