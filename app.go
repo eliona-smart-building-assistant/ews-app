@@ -149,17 +149,17 @@ func collectResources(config apiserver.Configuration) error {
 	var newBookings []model.Booking
 	var changedBookings []model.Booking
 
-	for _, a := range assets {
-		if !a.AssetID.Valid {
+	for _, ast := range assets {
+		if !ast.AssetID.Valid {
 			continue
 		}
-		appointments, err := ewsHelper.GetRoomAppointments(a.ProviderID, time.Now().Add(-8*time.Hour), time.Now().Add(8*time.Hour))
+		appointments, err := ewsHelper.GetRoomAppointments(ast.ProviderID, time.Now().Add(-8*time.Hour), time.Now().Add(8*time.Hour))
 		if err != nil {
 			log.Error("EWS", "getting appointments: %v", err)
 			return err
 		}
 		for i := range appointments {
-			appointments[i].AssetID = a.AssetID.Int32
+			appointments[i].AssetID = ast.AssetID.Int32
 			a := appointments[i]
 
 			booking, err := conf.GetBookingByExchangeID(a.ExchangeID)
