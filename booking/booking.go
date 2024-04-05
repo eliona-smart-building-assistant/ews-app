@@ -25,9 +25,11 @@ func NewClient(baseURL string) *client {
 }
 
 func (c *client) Book(bookings []model.Booking) error {
+	fmt.Println(bookings)
 	var convertedBookings []bookingRequest
 	for _, b := range bookings {
 		convertedBookings = append(convertedBookings, bookingRequest{
+			BookingID:   b.ElionaID,
 			AssetIds:    []int{int(b.AssetID)},
 			OrganizerID: b.OrganizerEmail,
 			Start:       b.Start,
@@ -38,6 +40,7 @@ func (c *client) Book(bookings []model.Booking) error {
 }
 
 type bookingRequest struct {
+	BookingID   int32     `json:"bookingID"`
 	AssetIds    []int     `json:"assetIds"`
 	OrganizerID string    `json:"organizerID"`
 	Start       time.Time `json:"start"`

@@ -150,6 +150,7 @@ func collectResources(config apiserver.Configuration) error {
 	var changedBookings []model.Booking
 
 	for _, ast := range assets {
+		fmt.Println(ast.ProviderID)
 		if !ast.AssetID.Valid {
 			continue
 		}
@@ -161,12 +162,14 @@ func collectResources(config apiserver.Configuration) error {
 		for i := range appointments {
 			appointments[i].AssetID = ast.AssetID.Int32
 			a := appointments[i]
-
+			fmt.Println(a.ExchangeID)
 			booking, err := conf.GetBookingByExchangeID(a.ExchangeID)
 			if err != nil && !errors.Is(err, conf.ErrNotFound) {
 				log.Error("conf", "getting booking for exchange ID %s: %v", a.ExchangeID, err)
 				return err
 			} else if errors.Is(err, conf.ErrNotFound) {
+				fmt.Println("booking new")
+
 				// Booking is new
 				newBookings = append(newBookings, a)
 
@@ -185,11 +188,13 @@ func collectResources(config apiserver.Configuration) error {
 			}
 
 			if booking.ExchangeChangeKey.String != a.ExchangeChangeKey {
+				fmt.Println("booking changed")
 				// Booking has changed.
 				if !booking.BookingID.Valid {
 					// Booking not yet synced to Eliona
 					newBookings = append(newBookings, a)
 				}
+				a.ElionaID = booking.BookingID.Int32
 				changedBookings = append(changedBookings, a)
 				booking.ExchangeChangeKey = null.StringFrom(a.ExchangeChangeKey)
 				err := conf.UpdateBooking(booking)
@@ -204,12 +209,15 @@ func collectResources(config apiserver.Configuration) error {
 			continue
 		}
 	}
+	// todo: unhardcode
 	bc := booking.NewClient("http://localhost:3031/v1")
 	if err := bc.Book(newBookings); err != nil {
-		log.Error("Booking", "booking appointments: %v", err)
+		log.Error("Booking", "booking: %v", err)
 	}
 
-	// todo: changedBookings
+	if err := bc.Book(changedBookings); err != nil {
+		log.Error("Booking", "updating bookings: %v", err)
+	}
 
 	return nil
 }
