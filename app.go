@@ -179,7 +179,12 @@ func collectResources(config apiserver.Configuration) error {
 				continue
 			}
 
-			if !booking.ExchangeChangeKey.Valid || booking.ExchangeChangeKey.String != a.ExchangeChangeKey {
+			if !booking.ExchangeChangeKey.Valid {
+				log.Error("conf", "undefined state: booking %v has no change key", booking.ExchangeID.String)
+				continue
+			}
+
+			if booking.ExchangeChangeKey.String != a.ExchangeChangeKey {
 				// Booking has changed.
 				changedBookings = append(changedBookings, a)
 				booking.ExchangeChangeKey = null.StringFrom(a.ExchangeChangeKey)
