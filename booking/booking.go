@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"ews/appdb"
+	"ews/conf"
 	"ews/model"
 	"fmt"
 	"net/http"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/eliona-smart-building-assistant/go-utils/log"
 	"github.com/gorilla/websocket"
+	"github.com/volatiletech/null/v8"
 )
 
 type client struct {
@@ -25,18 +28,27 @@ func NewClient(baseURL string) *client {
 }
 
 func (c *client) Book(bookings []model.Booking) error {
-	fmt.Println(bookings)
-	var convertedBookings []bookingRequest
 	for _, b := range bookings {
-		convertedBookings = append(convertedBookings, bookingRequest{
+		convertedBooking := bookingRequest{
 			BookingID:   b.ElionaID,
 			AssetIds:    []int{int(b.AssetID)},
 			OrganizerID: b.OrganizerEmail,
 			Start:       b.Start,
 			End:         b.End,
-		})
+		}
+		responseBooking, err := c.book(convertedBooking)
+		if err != nil {
+			return err
+		}
+		if err := conf.UpsertBooking(appdb.Booking{
+			ExchangeID:        null.StringFrom(b.ExchangeID),
+			ExchangeChangeKey: null.StringFrom(b.ExchangeChangeKey),
+			BookingID:         null.Int32From(responseBooking.Id),
+		}); err != nil {
+			return fmt.Errorf("upserting booking id: %v", err)
+		}
 	}
-	return c.book(convertedBookings)
+	return nil
 }
 
 type bookingRequest struct {
@@ -47,23 +59,37 @@ type bookingRequest struct {
 	End         time.Time `json:"end"`
 }
 
-func (c *client) book(bookings []bookingRequest) error {
+type bookingResponse struct {
+	Id            int32     `json:"id"`
+	AssetIds      []int32   `json:"assetIds"`
+	Start         time.Time `json:"start"`
+	End           time.Time `json:"end"`
+	OrganizerID   string    `json:"organizerID"`
+	OrganizerName string    `json:"organizerName"`
+}
+
+func (c *client) book(bookings bookingRequest) (bookingResponse, error) {
 	body, err := json.Marshal(bookings)
 	if err != nil {
-		return err
+		return bookingResponse{}, err
 	}
 
 	resp, err := http.Post(c.BaseURL+"/sync/bookings", "application/json", bytes.NewBuffer(body))
 	if err != nil {
-		return err
+		return bookingResponse{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return bookingResponse{}, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	return nil
+	var respBody bookingResponse
+	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+		return bookingResponse{}, fmt.Errorf("error parsing response body: %v", err)
+	}
+
+	return respBody, nil
 }
 
 type BookingsSubscriptionRequest struct {

@@ -281,10 +281,19 @@ func GetBookingByExchangeID(exchangeID string) (appdb.Booking, error) {
 	return *booking, nil
 }
 
-func UpdateBooking(booking appdb.Booking) error {
+func UpdateBookingExchangeChangeID(booking appdb.Booking) error {
 	_, err := booking.UpdateG(
 		context.Background(),
 		boil.Whitelist(appdb.BookingColumns.ExchangeChangeKey),
 	)
 	return err
+}
+
+func UpsertBooking(booking appdb.Booking) error {
+	return booking.UpsertG(
+		context.Background(), true,
+		[]string{appdb.BookingColumns.ExchangeID},
+		boil.Whitelist(appdb.BookingColumns.ExchangeChangeKey),
+		boil.Infer(),
+	)
 }

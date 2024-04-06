@@ -197,7 +197,7 @@ func collectResources(config apiserver.Configuration) error {
 				a.ElionaID = booking.BookingID.Int32
 				changedBookings = append(changedBookings, a)
 				booking.ExchangeChangeKey = null.StringFrom(a.ExchangeChangeKey)
-				err := conf.UpdateBooking(booking)
+				err := conf.UpdateBookingExchangeChangeID(booking)
 				if err != nil {
 					log.Error("conf", "updating booking: %v", err)
 					return err
