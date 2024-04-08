@@ -293,7 +293,7 @@ func UpsertBooking(booking appdb.Booking) error {
 	return booking.UpsertG(
 		context.Background(), true,
 		[]string{appdb.BookingColumns.ExchangeID},
-		boil.Whitelist(appdb.BookingColumns.ExchangeChangeKey),
+		boil.Whitelist(appdb.BookingColumns.ExchangeChangeKey, appdb.BookingColumns.BookingID),
 		boil.Infer(),
 	)
 }
