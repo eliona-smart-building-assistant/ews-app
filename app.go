@@ -150,11 +150,10 @@ func collectResources(config apiserver.Configuration) error {
 	var changedBookings []model.Booking
 
 	for _, ast := range assets {
-		fmt.Println(ast.ProviderID)
 		if !ast.AssetID.Valid {
 			continue
 		}
-		appointments, err := ewsHelper.GetRoomAppointments(ast.ProviderID, time.Now().Add(-8*time.Hour), time.Now().Add(8*time.Hour))
+		appointments, err := ewsHelper.GetRoomAppointments(ast.ProviderID, time.Now().Add(-24*time.Hour), time.Now().Add(7*24*time.Hour))
 		if err != nil {
 			log.Error("EWS", "getting appointments: %v", err)
 			return err
@@ -162,14 +161,11 @@ func collectResources(config apiserver.Configuration) error {
 		for i := range appointments {
 			appointments[i].AssetID = ast.AssetID.Int32
 			a := appointments[i]
-			fmt.Println(a.ExchangeID)
 			booking, err := conf.GetBookingByExchangeID(a.ExchangeID)
 			if err != nil && !errors.Is(err, conf.ErrNotFound) {
 				log.Error("conf", "getting booking for exchange ID %s: %v", a.ExchangeID, err)
 				return err
 			} else if errors.Is(err, conf.ErrNotFound) {
-				fmt.Println("booking new")
-
 				// Booking is new
 				newBookings = append(newBookings, a)
 
@@ -188,7 +184,6 @@ func collectResources(config apiserver.Configuration) error {
 			}
 
 			if booking.ExchangeChangeKey.String != a.ExchangeChangeKey {
-				fmt.Println("booking changed")
 				// Booking has changed.
 				if !booking.BookingID.Valid {
 					// Booking not yet synced to Eliona
@@ -223,6 +218,7 @@ func collectResources(config apiserver.Configuration) error {
 }
 
 func listenForBookings(config apiserver.Configuration) {
+	// todo: unhardcode
 	baseURL := "http://localhost:3031/v1"
 	assetIDs, err := conf.GetWatchedAssetIDs()
 	if err != nil {
