@@ -9,6 +9,7 @@ import (
 	"ews/conf"
 	"ews/model"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -81,7 +82,12 @@ func (c *client) book(bookings bookingRequest) (bookingResponse, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
-		return bookingResponse{}, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			// Handle error, possibly return an error indicating the body could not be read
+			return bookingResponse{}, fmt.Errorf("error %v returned: failed to read response body: %v", resp.StatusCode, err)
+		}
+		return bookingResponse{}, fmt.Errorf("unexpected status code %d: %v", resp.StatusCode, string(bodyBytes))
 	}
 
 	var respBody bookingResponse
