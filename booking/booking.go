@@ -125,6 +125,7 @@ type Booking struct {
 	OrganizerID string    `json:"organizerID"`
 	Start       time.Time `json:"start"`
 	End         time.Time `json:"end"`
+	Cancelled   bool      `json:"cancelled"`
 }
 
 func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan model.Booking, error) {
@@ -183,6 +184,7 @@ func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan 
 				OrganizerEmail: booking.OrganizerID,
 				Start:          booking.Start,
 				End:            booking.End,
+				Cancelled:      booking.Cancelled,
 			}
 		}
 	}()

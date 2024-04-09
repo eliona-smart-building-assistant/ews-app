@@ -281,6 +281,18 @@ func GetBookingByExchangeID(exchangeID string) (appdb.Booking, error) {
 	return *booking, nil
 }
 
+func GetBookingByElionaID(bookingID int32) (appdb.Booking, error) {
+	booking, err := appdb.Bookings(
+		appdb.BookingWhere.BookingID.EQ(null.Int32From(bookingID)),
+	).OneG(context.Background())
+	if errors.Is(err, sql.ErrNoRows) {
+		return appdb.Booking{}, ErrNotFound
+	} else if err != nil {
+		return appdb.Booking{}, fmt.Errorf("fetching booking from database: %v", err)
+	}
+	return *booking, nil
+}
+
 func UpdateBookingExchangeChangeID(booking appdb.Booking) error {
 	_, err := booking.UpdateG(
 		context.Background(),

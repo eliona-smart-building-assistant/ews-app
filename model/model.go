@@ -36,6 +36,7 @@ type Booking struct {
 	OrganizerEmail    string
 	Start             time.Time
 	End               time.Time
+	Cancelled         bool
 }
 
 // Assets

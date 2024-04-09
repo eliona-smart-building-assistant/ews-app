@@ -242,36 +242,60 @@ func listenForBookings(config apiserver.Configuration) {
 		return
 	}
 	for book := range bookingsChan {
-		asset, err := conf.GetAssetById(book.AssetID)
-		if err != nil {
-			log.Error("conf", "getting asset ID %v: %v", book.AssetID, err)
+		if book.Cancelled {
+			cancelInEWS(book, config)
 			continue
 		}
-		// We want to book on behalf of the organizer, thus we need to create a helper for each booking.
-		ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret, book.OrganizerEmail)
-		app := ews.Appointment{
-			Organizer: book.OrganizerEmail,
-			Subject:   "Eliona booking",
-			Start:     book.Start,
-			End:       book.End,
-			Location:  asset.ProviderID,
-			Attendees: []string{asset.ProviderID},
-		}
-		itemID, changeKey, err := ewsHelper.CreateAppointment(app)
-		if err != nil {
-			log.Error("ews", "creating appointment: %v", err)
-			continue
-		}
-		log.Debug("ews", "created a booking for %v", book.OrganizerEmail)
-		b := appdb.Booking{
-			ExchangeID:        null.StringFrom(itemID),
-			ExchangeChangeKey: null.StringFrom(changeKey),
-			BookingID:         null.Int32From(book.ElionaID),
-		}
-		if err := conf.InsertBooking(b); err != nil {
-			log.Error("conf", "inserting booking: %v", err)
-			continue
-		}
+		bookInEWS(book, config)
+	}
+}
+
+func cancelInEWS(book model.Booking, config apiserver.Configuration) {
+	ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret, book.OrganizerEmail)
+	booking, err := conf.GetBookingByElionaID(book.ElionaID)
+	if err != nil {
+		log.Error("conf", "getting booking for Eliona ID %v: %v", book.ElionaID, err)
+		return
+	} else if !booking.ExchangeID.Valid {
+		log.Error("db", "cancelling booking: booking %v does not have exchangeID", booking.ID)
+		return
+	}
+	if err := ewsHelper.CancelEvent(booking.ExchangeID.String, book.OrganizerEmail); err != nil {
+		log.Error("ews", "cancelling event: %v", err)
+		return
+	}
+}
+
+func bookInEWS(book model.Booking, config apiserver.Configuration) {
+	asset, err := conf.GetAssetById(book.AssetID)
+	if err != nil {
+		log.Error("conf", "getting asset ID %v: %v", book.AssetID, err)
+		return
+	}
+	// We want to book on behalf of the organizer, thus we need to create a helper for each booking.
+	ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret, book.OrganizerEmail)
+	app := ews.Appointment{
+		Organizer: book.OrganizerEmail,
+		Subject:   "Eliona booking",
+		Start:     book.Start,
+		End:       book.End,
+		Location:  asset.ProviderID,
+		Attendees: []string{asset.ProviderID},
+	}
+	itemID, changeKey, err := ewsHelper.CreateAppointment(app)
+	if err != nil {
+		log.Error("ews", "creating appointment: %v", err)
+		return
+	}
+	log.Debug("ews", "created a booking for %v", book.OrganizerEmail)
+	b := appdb.Booking{
+		ExchangeID:        null.StringFrom(itemID),
+		ExchangeChangeKey: null.StringFrom(changeKey),
+		BookingID:         null.Int32From(book.ElionaID),
+	}
+	if err := conf.InsertBooking(b); err != nil {
+		log.Error("conf", "inserting booking: %v", err)
+		return
 	}
 }
 

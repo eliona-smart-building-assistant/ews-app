@@ -18,6 +18,8 @@ package ews
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/xml"
 	"ews/apiserver"
 	"ews/model"
@@ -394,6 +396,273 @@ type appointmentCreated struct {
 			} `xml:"ResponseMessages"`
 		} `xml:"CreateItemResponse"`
 	} `xml:"Body"`
+}
+
+func (h *EWSHelper) CancelEvent(roomItemId string, organizer string) error {
+	uid, err := h.getUIDFromItemId("noisy@z0vmd.onmicrosoft.com", roomItemId)
+	if err != nil {
+		return fmt.Errorf("getting UID from ItemID: %v", err)
+	}
+
+	// Find the organizer's eventId and changeKey using the UID
+	eventID, changeKey, err := h.findEventUIDInMailbox(organizer, uid)
+	if err != nil {
+		return fmt.Errorf("finding organizer event ID: %v", err)
+	}
+
+	requestXML := fmt.Sprintf(`
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+    <soap:Header>
+        <t:RequestServerVersion Version="Exchange2013_SP1"/>
+        <t:ExchangeImpersonation>
+            <t:ConnectingSID>
+                <t:SmtpAddress>%s</t:SmtpAddress>
+            </t:ConnectingSID>
+        </t:ExchangeImpersonation>
+    </soap:Header>
+    <soap:Body>
+    <m:CreateItem MessageDisposition="SendAndSaveCopy">
+      <m:Items>
+        <t:CancelCalendarItem>
+          <t:ReferenceItemId Id="%s" ChangeKey="%s" />
+          <t:NewBodyContent BodyType="HTML">Cancelled via Eliona</t:NewBodyContent>
+        </t:CancelCalendarItem>
+      </m:Items>
+    </m:CreateItem>
+  </soap:Body>
+</soap:Envelope>`, organizer, eventID, changeKey)
+
+	req, err := http.NewRequest("POST", h.EwsURL, bytes.NewBufferString(requestXML))
+	if err != nil {
+		return fmt.Errorf("creating request: %w", err)
+	}
+
+	req.Header.Add("Content-Type", "text/xml; charset=utf-8")
+
+	resp, err := h.Client.Do(req)
+	if err != nil {
+		return fmt.Errorf("sending request to EWS: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("reading response body: %w", err)
+	}
+
+	var response struct {
+		XMLName xml.Name `xml:"Envelope"`
+		Body    struct {
+			CreateItemResponse struct {
+				ResponseMessages struct {
+					CreateItemResponseMessage struct {
+						ResponseClass string `xml:"ResponseClass,attr"`
+						ResponseCode  string `xml:"ResponseCode"`
+					} `xml:"CreateItemResponseMessage"`
+				} `xml:"ResponseMessages"`
+			} `xml:"CreateItemResponse"`
+		} `xml:"Body"`
+	}
+
+	if err := xml.Unmarshal([]byte(respBody), &response); err != nil {
+		return fmt.Errorf("unmarshalling XML: %v", err)
+	}
+
+	responseClass := response.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.ResponseClass
+	responseCode := response.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.ResponseCode
+
+	if responseClass != "Success" || responseCode != "NoError" {
+		return fmt.Errorf("cancelling event resulted in %s - %s. Response: %s", responseClass, responseCode, string(respBody))
+	}
+
+	return nil
+}
+
+func (h *EWSHelper) getUIDFromItemId(itemMailbox string, itemId string) (string, error) {
+	requestXML := fmt.Sprintf(`
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types">
+    <soap:Header>
+        <t:RequestServerVersion Version="Exchange2013_SP1"/>
+        <t:ExchangeImpersonation>
+            <t:ConnectingSID>
+                <t:SmtpAddress>%s</t:SmtpAddress>
+            </t:ConnectingSID>
+        </t:ExchangeImpersonation>
+    </soap:Header>
+    <soap:Body>
+        <GetItem xmlns="http://schemas.microsoft.com/exchange/services/2006/messages">
+            <ItemShape>
+                <t:BaseShape>IdOnly</t:BaseShape>
+                <t:AdditionalProperties>
+                    <t:FieldURI FieldURI="calendar:UID"/>
+                </t:AdditionalProperties>
+            </ItemShape>
+            <ItemIds>
+                <t:ItemId Id="%s"/>
+            </ItemIds>
+        </GetItem>
+    </soap:Body>
+</soap:Envelope>`, itemMailbox, itemId)
+
+	respBody, err := h.sendSOAPRequest(requestXML)
+	if err != nil {
+		return "", fmt.Errorf("sending SOAP request failed: %v", err)
+	}
+
+	// Define a struct to unmarshal the response XML
+	var response struct {
+		Body struct {
+			GetItemResponse struct {
+				ResponseMessages struct {
+					GetItemResponseMessage struct {
+						Items struct {
+							CalendarItem struct {
+								UID string `xml:"UID"`
+							} `xml:"CalendarItem"`
+						} `xml:"Items"`
+					} `xml:"GetItemResponseMessage"`
+				} `xml:"ResponseMessages"`
+			} `xml:"GetItemResponse"`
+		} `xml:"Body"`
+	}
+
+	// Unmarshal the response body into the struct
+	if err := xml.Unmarshal(respBody, &response); err != nil {
+		return "", fmt.Errorf("XML unmarshal failed: %v", err)
+	}
+
+	uid := response.Body.GetItemResponse.ResponseMessages.GetItemResponseMessage.Items.CalendarItem.UID
+	if uid == "" {
+		return "", fmt.Errorf("UID not found in response. Response: %v", string(respBody))
+	}
+
+	return uid, nil
+}
+
+func (h *EWSHelper) sendSOAPRequest(requestXML string) ([]byte, error) {
+	req, err := http.NewRequest("POST", h.EwsURL, bytes.NewBufferString(requestXML))
+	if err != nil {
+		return nil, err
+	}
+
+	// Set necessary headers here, including authentication headers
+	req.Header.Add("Content-Type", "text/xml; charset=utf-8")
+
+	resp, err := h.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	return io.ReadAll(resp.Body)
+}
+
+func getObjectIdStringFromUid(id string) (string, error) {
+	buf, err := hex.DecodeString(id)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// findEventUIDInMailbox finds the event specified by UID in the specified mailbox
+// and returns it's itemID and changeKey.
+// Inspired by article [1].
+// [1] http://www.infinitec.de/post/2009/04/13/Searching-a-meeting-with-a-specific-UID-using-Exchange-Web-Services-2007.aspx
+//
+// GlobalObjectId represents a unique binary identifier for calendar items in Exchange.
+// It is derived from the calendar item's UID (Universal Identifier), which remains constant
+// even if the calendar item is moved or modified, providing a stable identifier across mailboxes.
+// This property is crucial for operations that require identifying a specific calendar event uniquely,
+// such as finding corresponding events across different users' calendars.
+//
+// In EWS, the GlobalObjectId is not directly exposed as a first-class property but can be accessed
+// through the use of extended properties. The specific PropertySetId PSETID_Meeting
+// ("6ED8DA90-450B-101B-98DA-00AA003F1305") and PropertyId ("0x03") are used to query this property
+// in FindItem operations. These identifiers are defined by MAPI (Messaging Application Programming
+// Interface) and are utilized in EWS to perform operations that involve the GlobalObjectId, like
+// searching for a meeting by its UID.
+//
+// The need to convert the UID from a hexadecimal string to a base64-encoded string before querying
+// stems from the binary nature of the GlobalObjectId in EWS. This conversion ensures that the value
+// is correctly formatted for inclusion in SOAP requests, enabling effective querying and manipulation
+// of calendar items based on their universal identifier.
+func (h *EWSHelper) findEventUIDInMailbox(organizer, uid string) (itemID string, changeKey string, err error) {
+	globalObjectID, err := getObjectIdStringFromUid(uid)
+	if err != nil {
+		return "", "", fmt.Errorf("error converting UID: %v", err)
+	}
+
+	requestXML := fmt.Sprintf(`
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+    <soap:Header>
+        <t:RequestServerVersion Version="Exchange2013_SP1"/>
+        <t:ExchangeImpersonation>
+            <t:ConnectingSID>
+                <t:SmtpAddress>%s</t:SmtpAddress>
+            </t:ConnectingSID>
+        </t:ExchangeImpersonation>
+    </soap:Header>
+    <soap:Body>
+      <m:FindItem Traversal="Shallow">
+        <m:ItemShape>
+          <t:BaseShape>AllProperties</t:BaseShape>
+        </m:ItemShape>
+        <m:Restriction>
+          <t:IsEqualTo>
+            <t:ExtendedFieldURI PropertySetId="6ED8DA90-450B-101B-98DA-00AA003F1305" PropertyId="3" PropertyType="Binary"/>
+            <t:FieldURIOrConstant>
+              <t:Constant Value="%s"/>
+            </t:FieldURIOrConstant>
+          </t:IsEqualTo>
+        </m:Restriction>
+        <m:ParentFolderIds>
+          <t:DistinguishedFolderId Id="calendar">
+            <t:Mailbox>
+              <t:EmailAddress>%s</t:EmailAddress>
+            </t:Mailbox>
+          </t:DistinguishedFolderId>
+        </m:ParentFolderIds>
+      </m:FindItem>
+    </soap:Body>
+</soap:Envelope>`, organizer, globalObjectID, organizer)
+
+	respBody, err := h.sendSOAPRequest(requestXML)
+	if err != nil {
+		return "", "", fmt.Errorf("sending SOAP request failed: %v", err)
+	}
+
+	var response struct {
+		Body struct {
+			FindItemResponse struct {
+				ResponseMessages struct {
+					FindItemResponseMessage struct {
+						RootFolder struct {
+							Items struct {
+								CalendarItem []struct {
+									ItemId struct {
+										ID        string `xml:"Id,attr"`
+										ChangeKey string `xml:"ChangeKey,attr"`
+									} `xml:"ItemId"`
+								} `xml:"CalendarItem"`
+							} `xml:"Items"`
+						} `xml:"RootFolder"`
+					} `xml:"FindItemResponseMessage"`
+				} `xml:"ResponseMessages"`
+			} `xml:"FindItemResponse"`
+		} `xml:"Body"`
+	}
+
+	if err := xml.Unmarshal(respBody, &response); err != nil {
+		return "", "", fmt.Errorf("XML unmarshal failed: %v", err)
+	}
+
+	if len(response.Body.FindItemResponse.ResponseMessages.FindItemResponseMessage.RootFolder.Items.CalendarItem) == 0 {
+		return "", "", fmt.Errorf("event not found. response: %v", string(respBody))
+	}
+
+	item := response.Body.FindItemResponse.ResponseMessages.FindItemResponseMessage.RootFolder.Items.CalendarItem[0].ItemId
+	return item.ID, item.ChangeKey, nil
 }
 
 // resolveDN translates the distinguished name to a SMTP one.
