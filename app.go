@@ -153,9 +153,12 @@ func collectResources(config apiserver.Configuration) error {
 		if !ast.AssetID.Valid {
 			continue
 		}
+		if ast.ProviderID == "" {
+			continue
+		}
 		appointments, err := ewsHelper.GetRoomAppointments(ast.ProviderID, time.Now().Add(-24*time.Hour), time.Now().Add(7*24*time.Hour))
 		if err != nil {
-			log.Error("EWS", "getting appointments: %v", err)
+			log.Error("EWS", "getting appointments for %s: %v", ast.ProviderID, err)
 			return err
 		}
 		for i := range appointments {

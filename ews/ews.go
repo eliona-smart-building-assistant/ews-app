@@ -185,7 +185,7 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, start, end time.Time) 
                     <t:FieldURI FieldURI="calendar:IsCancelled"/>
                 </t:AdditionalProperties>
             </m:ItemShape>
-            <m:CalendarView MaxEntriesReturned="50" StartDate="%s" EndDate="%s"/>
+            <m:CalendarView MaxEntriesReturned="65536" StartDate="%s" EndDate="%s"/>
             <m:ParentFolderIds>
                 <t:DistinguishedFolderId Id="calendar">
                     <t:Mailbox>
@@ -201,6 +201,24 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, start, end time.Time) 
 	if err != nil {
 		return nil, fmt.Errorf("getting room %v appointments: %v", roomEmail, err)
 	}
+
+	// First, try to unmarshal into SOAPFault to see if there was an error.
+	var soapFault struct {
+		Body struct {
+			Fault struct {
+				FaultCode   string `xml:"faultcode"`
+				FaultString string `xml:"faultstring"`
+				Detail      struct {
+					ResponseCode string `xml:"ResponseCode"`
+					Message      string `xml:"Message"`
+				} `xml:"detail"`
+			} `xml:"Fault"`
+		} `xml:"Body"`
+	}
+	if err := xml.Unmarshal([]byte(responseXML), &soapFault); err == nil && soapFault.Body.Fault.FaultCode != "" {
+		return nil, fmt.Errorf("SOAP fault: %s - %s", soapFault.Body.Fault.Detail.ResponseCode, soapFault.Body.Fault.Detail.Message)
+	}
+
 	var env roomEventsEnvelope
 	if err := xml.Unmarshal([]byte(responseXML), &env); err != nil {
 		return nil, fmt.Errorf("unmarshaling XML: %v", err)
