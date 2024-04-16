@@ -57,25 +57,25 @@ func NewEWSHelper(clientID, tenantID, clientSecret, serviceUser string) *EWSHelp
 	}
 }
 
-func (h *EWSHelper) sendRequest(xmlBody string) (string, error) {
+func (h *EWSHelper) sendRequest(xmlBody string) ([]byte, error) {
 	request, err := http.NewRequest("POST", h.EwsURL, bytes.NewBufferString(xmlBody))
 	if err != nil {
-		return "", fmt.Errorf("creating request: %w", err)
+		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
 	request.Header.Add("Content-Type", "text/xml; charset=utf-8")
 	response, err := h.Client.Do(request)
 	if err != nil {
-		return "", fmt.Errorf("sending request: %w", err)
+		return nil, fmt.Errorf("sending request: %w", err)
 	}
 	defer response.Body.Close()
 
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		return "", fmt.Errorf("reading response body: %w", err)
+		return nil, fmt.Errorf("reading response body: %w", err)
 	}
 
-	return string(responseBody), nil
+	return responseBody, nil
 }
 
 type roomsEnvelope struct {
@@ -140,7 +140,7 @@ func (h *EWSHelper) GetAssets(config apiserver.Configuration) (model.Root, error
 	}
 
 	var env roomsEnvelope
-	if err := xml.Unmarshal([]byte(responseXML), &env); err != nil {
+	if err := xml.Unmarshal(responseXML, &env); err != nil {
 		return model.Root{}, fmt.Errorf("unmarshaling XML: %v", err)
 	}
 
@@ -272,12 +272,12 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, syncState string) (new
 			} `xml:"Fault"`
 		} `xml:"Body"`
 	}
-	if err := xml.Unmarshal([]byte(responseXML), &soapFault); err == nil && soapFault.Body.Fault.FaultCode != "" {
+	if err := xml.Unmarshal(responseXML, &soapFault); err == nil && soapFault.Body.Fault.FaultCode != "" {
 		return nil, nil, nil, syncState, fmt.Errorf("SOAP fault: %s - %s", soapFault.Body.Fault.Detail.ResponseCode, soapFault.Body.Fault.Detail.Message)
 	}
 
 	var env roomEventsEnvelope
-	if err := xml.Unmarshal([]byte(responseXML), &env); err != nil {
+	if err := xml.Unmarshal(responseXML, &env); err != nil {
 		return nil, nil, nil, syncState, fmt.Errorf("unmarshaling XML: %v", err)
 	}
 
@@ -369,7 +369,7 @@ type Appointment struct {
 }
 
 func (h *EWSHelper) CreateAppointment(appointment Appointment) (itemID, changeKey string, err error) {
-	requestBody := fmt.Sprintf(`
+	requestXML := fmt.Sprintf(`
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                   xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
                   xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
@@ -408,26 +408,13 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (itemID, changeKe
 		formatAttendees(appointment.Attendees),
 	)
 
-	req, err := http.NewRequest("POST", h.EwsURL, bytes.NewBufferString(requestBody))
+	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
-		return "", "", fmt.Errorf("creating request: %w", err)
-	}
-
-	req.Header.Add("Content-Type", "text/xml; charset=utf-8")
-
-	resp, err := h.Client.Do(req)
-	if err != nil {
-		return "", "", fmt.Errorf("sending request to EWS: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", "", fmt.Errorf("reading response body: %w", err)
+		return "", "", fmt.Errorf("requesting create appointment: %w", err)
 	}
 
 	var env appointmentCreated
-	if err := xml.Unmarshal([]byte(respBody), &env); err != nil {
+	if err := xml.Unmarshal(responseXML, &env); err != nil {
 		return "", "", fmt.Errorf("unmarshaling XML: %v", err)
 	}
 
@@ -506,22 +493,9 @@ func (h *EWSHelper) CancelEvent(roomItemId string, organizer string) error {
   </soap:Body>
 </soap:Envelope>`, organizer, eventID, changeKey)
 
-	req, err := http.NewRequest("POST", h.EwsURL, bytes.NewBufferString(requestXML))
+	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
-	}
-
-	req.Header.Add("Content-Type", "text/xml; charset=utf-8")
-
-	resp, err := h.Client.Do(req)
-	if err != nil {
-		return fmt.Errorf("sending request to EWS: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("reading response body: %w", err)
+		return fmt.Errorf("requesting cancel event: %w", err)
 	}
 
 	var response struct {
@@ -538,7 +512,7 @@ func (h *EWSHelper) CancelEvent(roomItemId string, organizer string) error {
 		} `xml:"Body"`
 	}
 
-	if err := xml.Unmarshal([]byte(respBody), &response); err != nil {
+	if err := xml.Unmarshal(responseXML, &response); err != nil {
 		return fmt.Errorf("unmarshalling XML: %v", err)
 	}
 
@@ -546,7 +520,7 @@ func (h *EWSHelper) CancelEvent(roomItemId string, organizer string) error {
 	responseCode := response.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.ResponseCode
 
 	if responseClass != "Success" || responseCode != "NoError" {
-		return fmt.Errorf("cancelling event resulted in %s - %s. Response: %s", responseClass, responseCode, string(respBody))
+		return fmt.Errorf("cancelling event resulted in %s - %s. Response: %s", responseClass, responseCode, string(responseXML))
 	}
 
 	return nil
@@ -578,7 +552,7 @@ func (h *EWSHelper) getUIDFromItemId(itemMailbox string, itemId string) (string,
     </soap:Body>
 </soap:Envelope>`, itemMailbox, itemId)
 
-	respBody, err := h.sendSOAPRequest(requestXML)
+	respBody, err := h.sendRequest(requestXML)
 	if err != nil {
 		return "", fmt.Errorf("sending SOAP request failed: %v", err)
 	}
@@ -611,24 +585,6 @@ func (h *EWSHelper) getUIDFromItemId(itemMailbox string, itemId string) (string,
 	}
 
 	return uid, nil
-}
-
-func (h *EWSHelper) sendSOAPRequest(requestXML string) ([]byte, error) {
-	req, err := http.NewRequest("POST", h.EwsURL, bytes.NewBufferString(requestXML))
-	if err != nil {
-		return nil, err
-	}
-
-	// Set necessary headers here, including authentication headers
-	req.Header.Add("Content-Type", "text/xml; charset=utf-8")
-
-	resp, err := h.Client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	return io.ReadAll(resp.Body)
 }
 
 func getObjectIdStringFromUid(id string) (string, error) {
@@ -701,7 +657,7 @@ func (h *EWSHelper) findEventUIDInMailbox(organizer, uid string) (itemID string,
     </soap:Body>
 </soap:Envelope>`, organizer, globalObjectID, organizer)
 
-	respBody, err := h.sendSOAPRequest(requestXML)
+	respBody, err := h.sendRequest(requestXML)
 	if err != nil {
 		return "", "", fmt.Errorf("sending SOAP request failed: %v", err)
 	}
@@ -771,16 +727,16 @@ func (h *EWSHelper) resolveDN(name string) (string, error) {
 
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
-		return "", fmt.Errorf("error resolving Legacy DN: %v", err)
+		return "", fmt.Errorf("resolving Legacy DN: %v", err)
 	}
 
 	var resp resolveNamesResponse
-	if err := xml.Unmarshal([]byte(responseXML), &resp); err != nil {
+	if err := xml.Unmarshal(responseXML, &resp); err != nil {
 		return "", fmt.Errorf("error unmarshaling XML from ResolveNames response: %v", err)
 	}
 	responseMessages := resp.Body.ResolveNamesResponse.ResponseMessages.ResolveNamesResponseMessage
 	if len(responseMessages) != 1 {
-		log.Debug("ews", responseXML)
+		log.Debug("ews", string(responseXML))
 		return "", fmt.Errorf("EWS reported an error")
 	}
 	resolutionMessages := responseMessages[0].ResolutionSet.Resolution
