@@ -40,7 +40,8 @@ create table if not exists ews.asset
 	project_id       text      not null,
 	global_asset_id  text      not null,
 	provider_id      text      not null,
-	asset_id         integer
+	asset_id         integer,
+	sync_state       text      not null
 );
 
 create table if not exists ews.booking

@@ -30,6 +30,7 @@ type Asset struct {
 	GlobalAssetID   string     `boil:"global_asset_id" json:"global_asset_id" toml:"global_asset_id" yaml:"global_asset_id"`
 	ProviderID      string     `boil:"provider_id" json:"provider_id" toml:"provider_id" yaml:"provider_id"`
 	AssetID         null.Int32 `boil:"asset_id" json:"asset_id,omitempty" toml:"asset_id" yaml:"asset_id,omitempty"`
+	SyncState       string     `boil:"sync_state" json:"sync_state" toml:"sync_state" yaml:"sync_state"`
 
 	R *assetR `boil:"-" json:"-" toml:"-" yaml:"-"`
 	L assetL  `boil:"-" json:"-" toml:"-" yaml:"-"`
@@ -42,6 +43,7 @@ var AssetColumns = struct {
 	GlobalAssetID   string
 	ProviderID      string
 	AssetID         string
+	SyncState       string
 }{
 	ID:              "id",
 	ConfigurationID: "configuration_id",
@@ -49,6 +51,7 @@ var AssetColumns = struct {
 	GlobalAssetID:   "global_asset_id",
 	ProviderID:      "provider_id",
 	AssetID:         "asset_id",
+	SyncState:       "sync_state",
 }
 
 var AssetTableColumns = struct {
@@ -58,6 +61,7 @@ var AssetTableColumns = struct {
 	GlobalAssetID   string
 	ProviderID      string
 	AssetID         string
+	SyncState       string
 }{
 	ID:              "asset.id",
 	ConfigurationID: "asset.configuration_id",
@@ -65,6 +69,7 @@ var AssetTableColumns = struct {
 	GlobalAssetID:   "asset.global_asset_id",
 	ProviderID:      "asset.provider_id",
 	AssetID:         "asset.asset_id",
+	SyncState:       "asset.sync_state",
 }
 
 // Generated where
@@ -164,6 +169,7 @@ var AssetWhere = struct {
 	GlobalAssetID   whereHelperstring
 	ProviderID      whereHelperstring
 	AssetID         whereHelpernull_Int32
+	SyncState       whereHelperstring
 }{
 	ID:              whereHelperint64{field: "\"ews\".\"asset\".\"id\""},
 	ConfigurationID: whereHelperint64{field: "\"ews\".\"asset\".\"configuration_id\""},
@@ -171,6 +177,7 @@ var AssetWhere = struct {
 	GlobalAssetID:   whereHelperstring{field: "\"ews\".\"asset\".\"global_asset_id\""},
 	ProviderID:      whereHelperstring{field: "\"ews\".\"asset\".\"provider_id\""},
 	AssetID:         whereHelpernull_Int32{field: "\"ews\".\"asset\".\"asset_id\""},
+	SyncState:       whereHelperstring{field: "\"ews\".\"asset\".\"sync_state\""},
 }
 
 // AssetRels is where relationship names are stored.
@@ -201,8 +208,8 @@ func (r *assetR) GetConfiguration() *Configuration {
 type assetL struct{}
 
 var (
-	assetAllColumns            = []string{"id", "configuration_id", "project_id", "global_asset_id", "provider_id", "asset_id"}
-	assetColumnsWithoutDefault = []string{"project_id", "global_asset_id", "provider_id"}
+	assetAllColumns            = []string{"id", "configuration_id", "project_id", "global_asset_id", "provider_id", "asset_id", "sync_state"}
+	assetColumnsWithoutDefault = []string{"project_id", "global_asset_id", "provider_id", "sync_state"}
 	assetColumnsWithDefault    = []string{"id", "configuration_id", "asset_id"}
 	assetPrimaryKeyColumns     = []string{"id"}
 	assetGeneratedColumns      = []string{}

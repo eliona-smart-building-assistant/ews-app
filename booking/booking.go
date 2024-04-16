@@ -98,6 +98,43 @@ func (c *client) book(bookings bookingRequest) (bookingResponse, error) {
 	return respBody, nil
 }
 
+func (c *client) Cancel(bookings []model.Booking) error {
+	for _, b := range bookings {
+		err := c.cancel(b.ElionaID)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *client) cancel(elionaID int32) error {
+	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/sync/bookings/%v", c.BaseURL, elionaID), nil)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	} else if resp.StatusCode == http.StatusNotFound {
+		log.Error("booking", "booking %v not found while cancelling", elionaID)
+	} else {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("error %v returned: failed to read response body: %v", resp.StatusCode, err)
+		}
+		return fmt.Errorf("unexpected status code %d: %v", resp.StatusCode, string(bodyBytes))
+	}
+
+	return nil
+}
+
 type BookingsSubscriptionRequest struct {
 	AssetIDs []int `json:"assetIDs"`
 }

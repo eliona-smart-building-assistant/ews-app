@@ -147,7 +147,8 @@ func collectResources(config apiserver.Configuration) error {
 		return err
 	}
 	var newBookings []model.Booking
-	var changedBookings []model.Booking
+	var updatedBookings []model.Booking
+	var cancelledBookings []model.Booking
 
 	for _, ast := range assets {
 		if !ast.AssetID.Valid {
@@ -156,65 +157,96 @@ func collectResources(config apiserver.Configuration) error {
 		if ast.ProviderID == "" {
 			continue
 		}
-		appointments, err := ewsHelper.GetRoomAppointments(ast.ProviderID, time.Now().Add(-24*time.Hour), time.Now().Add(7*24*time.Hour))
+
+		syncState, err := conf.GetSyncState(ast.ID)
+		if err != nil {
+			log.Error("conf", "getting sync state: %v", err)
+			return err
+		}
+
+		// See git blame here for filtering these events based on changeKey.
+		// Now that Exchange provides the distinction, let's trust it and simplify
+		// our logic.
+		new, updated, cancelled, newSyncState, err := ewsHelper.GetRoomAppointments(ast.ProviderID, syncState)
 		if err != nil {
 			log.Error("EWS", "getting appointments for %s: %v", ast.ProviderID, err)
 			return err
 		}
-		for i := range appointments {
-			appointments[i].AssetID = ast.AssetID.Int32
-			a := appointments[i]
+		for i := range updated {
+			updated[i].AssetID = ast.AssetID.Int32
+			a := updated[i]
 			booking, err := conf.GetBookingByExchangeID(a.ExchangeID)
 			if err != nil && !errors.Is(err, conf.ErrNotFound) {
 				log.Error("conf", "getting booking for exchange ID %s: %v", a.ExchangeID, err)
 				return err
 			} else if errors.Is(err, conf.ErrNotFound) {
 				// Booking is new
-				newBookings = append(newBookings, a)
-
-				booking.ExchangeID = null.StringFrom(a.ExchangeID)
-				booking.ExchangeChangeKey = null.StringFrom(a.ExchangeChangeKey)
-				if err := conf.InsertBooking(booking); err != nil {
-					log.Error("conf", "inserting booking: %v", err)
-					return err
-				}
-				continue
+				new = append(new, a)
 			}
 
-			if !booking.ExchangeChangeKey.Valid {
-				log.Error("conf", "undefined state: booking %v has no change key", booking.ExchangeID.String)
+			if !booking.BookingID.Valid {
+				// Booking not yet synced to Eliona
+				new = append(new, a)
+			}
+			a.ElionaID = booking.BookingID.Int32
+			updatedBookings = append(updatedBookings, a)
+			booking.ExchangeChangeKey = null.StringFrom(a.ExchangeChangeKey)
+			if err := conf.UpdateBookingExchangeChangeID(booking); err != nil {
+				log.Error("conf", "updating booking: %v", err)
+				return err
+			}
+		}
+		for i := range new {
+			new[i].AssetID = ast.AssetID.Int32
+			a := new[i]
+
+			newBookings = append(newBookings, a)
+			booking := appdb.Booking{
+				ExchangeID:        null.StringFrom(a.ExchangeID),
+				ExchangeChangeKey: null.StringFrom(a.ExchangeChangeKey),
+			}
+			if err := conf.InsertBooking(booking); err != nil {
+				log.Error("conf", "inserting booking: %v", err)
+				return err
+			}
+		}
+		for i := range cancelled {
+			cancelled[i].AssetID = ast.AssetID.Int32
+			a := cancelled[i]
+			booking, err := conf.GetBookingByExchangeID(a.ExchangeID)
+			if err != nil && !errors.Is(err, conf.ErrNotFound) {
+				log.Error("conf", "getting booking for exchange ID %s: %v", a.ExchangeID, err)
+				return err
+			} else if errors.Is(err, conf.ErrNotFound) || !booking.BookingID.Valid {
+				// Does not matter, cancelled anyways
 				continue
 			}
-
-			if booking.ExchangeChangeKey.String != a.ExchangeChangeKey {
-				// Booking has changed.
-				if !booking.BookingID.Valid {
-					// Booking not yet synced to Eliona
-					newBookings = append(newBookings, a)
-				}
-				a.ElionaID = booking.BookingID.Int32
-				changedBookings = append(changedBookings, a)
-				booking.ExchangeChangeKey = null.StringFrom(a.ExchangeChangeKey)
-				err := conf.UpdateBookingExchangeChangeID(booking)
-				if err != nil {
-					log.Error("conf", "updating booking: %v", err)
-					return err
-				}
-				continue
+			a.ElionaID = booking.BookingID.Int32
+			cancelledBookings = append(cancelledBookings, a)
+			booking.ExchangeChangeKey = null.StringFrom(a.ExchangeChangeKey)
+			if err := conf.UpdateBookingExchangeChangeID(booking); err != nil {
+				log.Error("conf", "updating booking: %v", err)
+				return err
 			}
-
-			// Booking has not changed, skip.
-			continue
+		}
+		if err := conf.PersistSyncState(ast.ID, newSyncState); err != nil {
+			log.Error("conf", "persisting sync state for %v: %v", ast.ID, err)
+			return err
 		}
 	}
+
 	// todo: unhardcode
 	bc := booking.NewClient("http://localhost:3031/v1")
 	if err := bc.Book(newBookings); err != nil {
 		log.Error("Booking", "booking: %v", err)
 	}
 
-	if err := bc.Book(changedBookings); err != nil {
+	if err := bc.Book(updatedBookings); err != nil {
 		log.Error("Booking", "updating bookings: %v", err)
+	}
+
+	if err := bc.Cancel(cancelledBookings); err != nil {
+		log.Error("Booking", "cancelling bookings: %v", err)
 	}
 
 	return nil

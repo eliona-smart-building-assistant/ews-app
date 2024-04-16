@@ -159,123 +159,41 @@ func (h *EWSHelper) GetAssets(config apiserver.Configuration) (model.Root, error
 	}, nil
 }
 
-func (h *EWSHelper) GetRoomAppointments(roomEmail string, start, end time.Time) ([]model.Booking, error) {
-	requestXML := fmt.Sprintf(`
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-                  xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
-                  xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
-    <soapenv:Header>
-        <t:RequestServerVersion Version="Exchange2013_SP1"/>
-        <t:ExchangeImpersonation>
-            <t:ConnectingSID>
-                <t:SmtpAddress>%s</t:SmtpAddress>
-            </t:ConnectingSID>
-        </t:ExchangeImpersonation>
-    </soapenv:Header>
-    <soapenv:Body>
-        <m:FindItem Traversal="Shallow">
-            <m:ItemShape>
-                <t:BaseShape>IdOnly</t:BaseShape>
-                <t:AdditionalProperties>
-                    <t:FieldURI FieldURI="item:Subject"/>
-                    <t:FieldURI FieldURI="item:DateTimeReceived"/>
-                    <t:FieldURI FieldURI="calendar:Start"/>
-                    <t:FieldURI FieldURI="calendar:End"/>
-                    <t:FieldURI FieldURI="calendar:Organizer"/>
-                    <t:FieldURI FieldURI="calendar:IsCancelled"/>
-                </t:AdditionalProperties>
-            </m:ItemShape>
-            <m:CalendarView MaxEntriesReturned="65536" StartDate="%s" EndDate="%s"/>
-            <m:ParentFolderIds>
-                <t:DistinguishedFolderId Id="calendar">
-                    <t:Mailbox>
-                        <t:EmailAddress>%s</t:EmailAddress>
-                    </t:Mailbox>
-                </t:DistinguishedFolderId>
-            </m:ParentFolderIds>
-        </m:FindItem>
-    </soapenv:Body>
-</soapenv:Envelope>
-`, roomEmail, start.Format(time.RFC3339), end.Format(time.RFC3339), roomEmail)
-	responseXML, err := h.sendRequest(requestXML)
-	if err != nil {
-		return nil, fmt.Errorf("getting room %v appointments: %v", roomEmail, err)
-	}
-
-	// First, try to unmarshal into SOAPFault to see if there was an error.
-	var soapFault struct {
-		Body struct {
-			Fault struct {
-				FaultCode   string `xml:"faultcode"`
-				FaultString string `xml:"faultstring"`
-				Detail      struct {
-					ResponseCode string `xml:"ResponseCode"`
-					Message      string `xml:"Message"`
-				} `xml:"detail"`
-			} `xml:"Fault"`
-		} `xml:"Body"`
-	}
-	if err := xml.Unmarshal([]byte(responseXML), &soapFault); err == nil && soapFault.Body.Fault.FaultCode != "" {
-		return nil, fmt.Errorf("SOAP fault: %s - %s", soapFault.Body.Fault.Detail.ResponseCode, soapFault.Body.Fault.Detail.Message)
-	}
-
-	var env roomEventsEnvelope
-	if err := xml.Unmarshal([]byte(responseXML), &env); err != nil {
-		return nil, fmt.Errorf("unmarshaling XML: %v", err)
-	}
-
-	var bookings []model.Booking
-	for _, message := range env.Body.FindItemResponse.ResponseMessages.FindItemResponseMessage {
-		for _, item := range message.RootFolder.Items.CalendarItem {
-			email, err := h.resolveDN(item.Organizer.Mailbox.EmailAddress)
-			if err != nil {
-				return nil, fmt.Errorf("resolving distinguished name '%s': %v", item.Organizer.Mailbox.EmailAddress, err)
-			}
-			bookings = append(bookings, model.Booking{
-				ExchangeID:        item.ItemId.Id,
-				ExchangeChangeKey: item.ItemId.ChangeKey,
-				Subject:           item.Subject,
-				OrganizerEmail:    email,
-				Start:             item.Start,
-				End:               item.End,
-			})
-		}
-	}
-
-	return bookings, nil
-}
-
 type roomEventsEnvelope struct {
 	XMLName xml.Name       `xml:"Envelope"`
 	Body    roomEventsBody `xml:"Body"`
 }
 
 type roomEventsBody struct {
-	FindItemResponse findItemResponse `xml:"FindItemResponse"`
+	SyncFolderItemsResponse syncFolderItemsResponse `xml:"SyncFolderItemsResponse"`
 }
 
-type findItemResponse struct {
+type syncFolderItemsResponse struct {
 	ResponseMessages responseMessages `xml:"ResponseMessages"`
 }
 
 type responseMessages struct {
-	FindItemResponseMessage []findItemResponseMessage `xml:"FindItemResponseMessage"`
+	SyncFolderItemsResponseMessage syncFolderItemsResponseMessage `xml:"SyncFolderItemsResponseMessage"`
 }
 
-type findItemResponseMessage struct {
-	ResponseClass string     `xml:"ResponseClass,attr"`
-	ResponseCode  string     `xml:"ResponseCode"`
-	RootFolder    rootFolder `xml:"RootFolder"`
+type syncFolderItemsResponseMessage struct {
+	SyncState               string  `xml:"SyncState"`
+	IncludesLastItemInRange string  `xml:"IncludesLastItemInRange"` // TODO: Implement pagination
+	Changes                 changes `xml:"Changes"`
 }
 
-type rootFolder struct {
-	TotalItemsInView        string `xml:"TotalItemsInView,attr"`
-	IncludesLastItemInRange string `xml:"IncludesLastItemInRange,attr"`
-	Items                   items  `xml:"Items"`
+type changes struct {
+	Create []createOrUpdate `xml:"Create"`
+	Update []createOrUpdate `xml:"Update"`
+	Delete []delete         `xml:"Delete"`
 }
 
-type items struct {
-	CalendarItem []calendarItem `xml:"CalendarItem"`
+type createOrUpdate struct {
+	CalendarItem *calendarItem `xml:"CalendarItem"`
+}
+
+type delete struct {
+	ItemId itemId `xml:"ItemId"`
 }
 
 type calendarItem struct {
@@ -299,8 +217,146 @@ type organizer struct {
 type mailbox struct {
 	Name         string `xml:"Name"`
 	EmailAddress string `xml:"EmailAddress"` // This might be either email address, or Legacy DN.
-	RoutingType  string `xml:"RoutingType"`
-	MailboxType  string `xml:"MailboxType"`
+}
+
+func (h *EWSHelper) GetRoomAppointments(roomEmail string, syncState string) (new []model.Booking, updated []model.Booking, cancelled []model.Booking, newSyncState string, err error) {
+	requestXML := fmt.Sprintf(`
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+    <soap:Header>
+        <t:RequestServerVersion Version="Exchange2013_SP1"/>
+        <t:ExchangeImpersonation>
+            <t:ConnectingSID>
+                <t:SmtpAddress>%s</t:SmtpAddress>
+            </t:ConnectingSID>
+        </t:ExchangeImpersonation>
+    </soap:Header>
+    <soap:Body>
+        <m:SyncFolderItems>
+            <m:ItemShape>
+                <t:BaseShape>IdOnly</t:BaseShape>
+                <t:AdditionalProperties>
+                    <t:FieldURI FieldURI="item:Subject"/>
+                    <t:FieldURI FieldURI="item:DateTimeReceived"/>
+                    <t:FieldURI FieldURI="calendar:Start"/>
+                    <t:FieldURI FieldURI="calendar:End"/>
+                    <t:FieldURI FieldURI="calendar:Organizer"/>
+                </t:AdditionalProperties>
+            </m:ItemShape>
+            <m:SyncFolderId>
+                <t:DistinguishedFolderId Id="calendar">
+                    <t:Mailbox>
+                        <t:EmailAddress>%s</t:EmailAddress>
+                    </t:Mailbox>
+                </t:DistinguishedFolderId>
+            </m:SyncFolderId>
+            <m:SyncState>%s</m:SyncState>
+            <m:MaxChangesReturned>65536</m:MaxChangesReturned>
+        </m:SyncFolderItems>
+    </soap:Body>
+</soap:Envelope>`, roomEmail, roomEmail, syncState)
+	responseXML, err := h.sendRequest(requestXML)
+	if err != nil {
+		return nil, nil, nil, syncState, fmt.Errorf("getting room %v appointments: %v", roomEmail, err)
+	}
+
+	// First, try to unmarshal into SOAPFault to see if there was an error.
+	var soapFault struct {
+		Body struct {
+			Fault struct {
+				FaultCode   string `xml:"faultcode"`
+				FaultString string `xml:"faultstring"`
+				Detail      struct {
+					ResponseCode string `xml:"ResponseCode"`
+					Message      string `xml:"Message"`
+				} `xml:"detail"`
+			} `xml:"Fault"`
+		} `xml:"Body"`
+	}
+	if err := xml.Unmarshal([]byte(responseXML), &soapFault); err == nil && soapFault.Body.Fault.FaultCode != "" {
+		return nil, nil, nil, syncState, fmt.Errorf("SOAP fault: %s - %s", soapFault.Body.Fault.Detail.ResponseCode, soapFault.Body.Fault.Detail.Message)
+	}
+
+	var env roomEventsEnvelope
+	if err := xml.Unmarshal([]byte(responseXML), &env); err != nil {
+		return nil, nil, nil, syncState, fmt.Errorf("unmarshaling XML: %v", err)
+	}
+
+	changes := env.Body.SyncFolderItemsResponse.ResponseMessages.SyncFolderItemsResponseMessage.Changes
+	for _, change := range changes.Create {
+		if err := change.checkItem(); err != nil {
+			log.Debug("ews", "skipped creating calendar item: %v", err)
+			continue
+		}
+		item := change.CalendarItem
+		email, err := h.resolveDN(item.Organizer.Mailbox.EmailAddress)
+		if err != nil {
+			return nil, nil, nil, syncState, fmt.Errorf("resolving distinguished name '%s': %v", item.Organizer.Mailbox.EmailAddress, err)
+		}
+		new = append(new, model.Booking{
+			ExchangeID:        item.ItemId.Id,
+			ExchangeChangeKey: item.ItemId.ChangeKey,
+			Subject:           item.Subject,
+			OrganizerEmail:    email,
+			Start:             item.Start,
+			End:               item.End,
+			Cancelled:         false,
+		})
+	}
+	for _, change := range changes.Update {
+		if err := change.checkItem(); err != nil {
+			log.Debug("ews", "item ID %v is not complete. Skipped updating.", change.CalendarItem.ItemId.Id)
+			continue
+		}
+		item := change.CalendarItem
+		email, err := h.resolveDN(item.Organizer.Mailbox.EmailAddress)
+		if err != nil {
+			return nil, nil, nil, syncState, fmt.Errorf("resolving distinguished name '%s': %v", item.Organizer.Mailbox.EmailAddress, err)
+		}
+		updated = append(updated, model.Booking{
+			ExchangeID:        item.ItemId.Id,
+			ExchangeChangeKey: item.ItemId.ChangeKey,
+			Subject:           item.Subject,
+			OrganizerEmail:    email,
+			Start:             item.Start,
+			End:               item.End,
+			Cancelled:         false,
+		})
+	}
+	for _, change := range changes.Delete {
+		cancelled = append(cancelled, model.Booking{
+			ExchangeID:        change.ItemId.Id,
+			ExchangeChangeKey: change.ItemId.ChangeKey,
+			Cancelled:         true,
+		})
+	}
+
+	newSyncState = env.Body.SyncFolderItemsResponse.ResponseMessages.SyncFolderItemsResponseMessage.SyncState
+
+	return new, updated, cancelled, newSyncState, nil
+}
+
+func (cr createOrUpdate) checkItem() error {
+	// Sometimes we can get information about non-calendarItems as well, like:
+	//
+	// <t:Create>
+	// 	<t:Message>
+	// 		<t:ItemId Id="AAMkADA0YjRlMDBiLTI5ZWQtNDhiYS1iYTRhLTU1NDcxMDA1YjlhZQBGAAAAAAD7L6rZT1EWT4zA7nKhCR2gBwA2JJ7TGEwETLI+6ZT89YaJAAAAAAENAAA2JJ7TGEwETLI+6ZT89YaJAAAGDBN1AAA=" ChangeKey="CQAAABYAAAA2JJ7TGEwETLI+6ZT89YaJAAAGC9oG" />
+	// 		<t:Subject>Let's go for lunch</t:Subject>
+	// 		<t:DateTimeReceived>2023-03-22T13:04:13Z</t:DateTimeReceived>
+	// 	</t:Message>
+	// </t:Create>
+	//
+	// Such entry has no value and we cannot process it.
+	if cr.CalendarItem == nil {
+		return fmt.Errorf("not a calendar item")
+	}
+	if cr.CalendarItem.Start.IsZero() || cr.CalendarItem.End.IsZero() {
+		return fmt.Errorf("item %v has no start or end", cr.CalendarItem.ItemId.Id)
+	}
+	if cr.CalendarItem.Organizer.Mailbox.EmailAddress == "" {
+		return fmt.Errorf("item %v has no organizer", cr.CalendarItem.ItemId.Id)
+	}
+	return nil
 }
 
 type Appointment struct {

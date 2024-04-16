@@ -265,6 +265,25 @@ func GetConfigForAsset(asset appdb.Asset) (apiserver.Configuration, error) {
 	return apiConfigFromDbConfig(c)
 }
 
+func GetSyncState(assetID int64) (string, error) {
+	dbConfig, err := appdb.Assets(
+		appdb.AssetWhere.ID.EQ(assetID),
+	).OneG(context.Background())
+	if err != nil {
+		return "", fmt.Errorf("fetching sync state %v from database: %v", assetID, err)
+	}
+	return dbConfig.SyncState, nil
+}
+
+func PersistSyncState(assetID int64, syncState string) error {
+	_, err := appdb.Assets(
+		appdb.AssetWhere.ID.EQ(assetID),
+	).UpdateAllG(context.Background(), appdb.M{
+		appdb.AssetColumns.SyncState: syncState,
+	})
+	return err
+}
+
 func InsertBooking(booking appdb.Booking) error {
 	return booking.InsertG(context.Background(), boil.Infer())
 }
