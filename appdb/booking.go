@@ -24,37 +24,37 @@ import (
 
 // Booking is an object representing the database table.
 type Booking struct {
-	ID                int64       `boil:"id" json:"id" toml:"id" yaml:"id"`
-	ExchangeID        null.String `boil:"exchange_id" json:"exchange_id,omitempty" toml:"exchange_id" yaml:"exchange_id,omitempty"`
-	ExchangeChangeKey null.String `boil:"exchange_change_key" json:"exchange_change_key,omitempty" toml:"exchange_change_key" yaml:"exchange_change_key,omitempty"`
-	BookingID         null.Int32  `boil:"booking_id" json:"booking_id,omitempty" toml:"booking_id" yaml:"booking_id,omitempty"`
+	ID          int64       `boil:"id" json:"id" toml:"id" yaml:"id"`
+	ExchangeID  null.String `boil:"exchange_id" json:"exchange_id,omitempty" toml:"exchange_id" yaml:"exchange_id,omitempty"`
+	ExchangeUID null.String `boil:"exchange_uid" json:"exchange_uid,omitempty" toml:"exchange_uid" yaml:"exchange_uid,omitempty"`
+	BookingID   null.Int32  `boil:"booking_id" json:"booking_id,omitempty" toml:"booking_id" yaml:"booking_id,omitempty"`
 
 	R *bookingR `boil:"-" json:"-" toml:"-" yaml:"-"`
 	L bookingL  `boil:"-" json:"-" toml:"-" yaml:"-"`
 }
 
 var BookingColumns = struct {
-	ID                string
-	ExchangeID        string
-	ExchangeChangeKey string
-	BookingID         string
+	ID          string
+	ExchangeID  string
+	ExchangeUID string
+	BookingID   string
 }{
-	ID:                "id",
-	ExchangeID:        "exchange_id",
-	ExchangeChangeKey: "exchange_change_key",
-	BookingID:         "booking_id",
+	ID:          "id",
+	ExchangeID:  "exchange_id",
+	ExchangeUID: "exchange_uid",
+	BookingID:   "booking_id",
 }
 
 var BookingTableColumns = struct {
-	ID                string
-	ExchangeID        string
-	ExchangeChangeKey string
-	BookingID         string
+	ID          string
+	ExchangeID  string
+	ExchangeUID string
+	BookingID   string
 }{
-	ID:                "booking.id",
-	ExchangeID:        "booking.exchange_id",
-	ExchangeChangeKey: "booking.exchange_change_key",
-	BookingID:         "booking.booking_id",
+	ID:          "booking.id",
+	ExchangeID:  "booking.exchange_id",
+	ExchangeUID: "booking.exchange_uid",
+	BookingID:   "booking.booking_id",
 }
 
 // Generated where
@@ -110,15 +110,15 @@ func (w whereHelpernull_String) IsNull() qm.QueryMod    { return qmhelper.WhereI
 func (w whereHelpernull_String) IsNotNull() qm.QueryMod { return qmhelper.WhereIsNotNull(w.field) }
 
 var BookingWhere = struct {
-	ID                whereHelperint64
-	ExchangeID        whereHelpernull_String
-	ExchangeChangeKey whereHelpernull_String
-	BookingID         whereHelpernull_Int32
+	ID          whereHelperint64
+	ExchangeID  whereHelpernull_String
+	ExchangeUID whereHelpernull_String
+	BookingID   whereHelpernull_Int32
 }{
-	ID:                whereHelperint64{field: "\"ews\".\"booking\".\"id\""},
-	ExchangeID:        whereHelpernull_String{field: "\"ews\".\"booking\".\"exchange_id\""},
-	ExchangeChangeKey: whereHelpernull_String{field: "\"ews\".\"booking\".\"exchange_change_key\""},
-	BookingID:         whereHelpernull_Int32{field: "\"ews\".\"booking\".\"booking_id\""},
+	ID:          whereHelperint64{field: "\"ews\".\"booking\".\"id\""},
+	ExchangeID:  whereHelpernull_String{field: "\"ews\".\"booking\".\"exchange_id\""},
+	ExchangeUID: whereHelpernull_String{field: "\"ews\".\"booking\".\"exchange_uid\""},
+	BookingID:   whereHelpernull_Int32{field: "\"ews\".\"booking\".\"booking_id\""},
 }
 
 // BookingRels is where relationship names are stored.
@@ -138,9 +138,9 @@ func (*bookingR) NewStruct() *bookingR {
 type bookingL struct{}
 
 var (
-	bookingAllColumns            = []string{"id", "exchange_id", "exchange_change_key", "booking_id"}
+	bookingAllColumns            = []string{"id", "exchange_id", "exchange_uid", "booking_id"}
 	bookingColumnsWithoutDefault = []string{}
-	bookingColumnsWithDefault    = []string{"id", "exchange_id", "exchange_change_key", "booking_id"}
+	bookingColumnsWithDefault    = []string{"id", "exchange_id", "exchange_uid", "booking_id"}
 	bookingPrimaryKeyColumns     = []string{"id"}
 	bookingGeneratedColumns      = []string{}
 )

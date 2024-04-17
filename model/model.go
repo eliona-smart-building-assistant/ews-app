@@ -28,15 +28,15 @@ import (
 )
 
 type Booking struct {
-	ExchangeID        string
-	ExchangeChangeKey string
-	ElionaID          int32
-	AssetID           int32
-	Subject           string
-	OrganizerEmail    string
-	Start             time.Time
-	End               time.Time
-	Cancelled         bool
+	ExchangeIDInResourceMailbox string
+	ExchangeUID                 string
+	ElionaID                    int32
+	AssetID                     int32
+	Subject                     string
+	OrganizerEmail              string
+	Start                       time.Time
+	End                         time.Time
+	Cancelled                   bool
 }
 
 // Assets

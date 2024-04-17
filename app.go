@@ -175,9 +175,9 @@ func collectResources(config apiserver.Configuration) error {
 		for i := range updated {
 			updated[i].AssetID = ast.AssetID.Int32
 			a := updated[i]
-			booking, err := conf.GetBookingByExchangeID(a.ExchangeID)
+			booking, err := conf.GetBookingByExchangeID(a.ExchangeIDInResourceMailbox)
 			if err != nil && !errors.Is(err, conf.ErrNotFound) {
-				log.Error("conf", "getting booking for exchange ID %s: %v", a.ExchangeID, err)
+				log.Error("conf", "getting booking for exchange ID %s: %v", a.ExchangeIDInResourceMailbox, err)
 				return err
 			} else if errors.Is(err, conf.ErrNotFound) {
 				// Booking is new
@@ -190,11 +190,6 @@ func collectResources(config apiserver.Configuration) error {
 			}
 			a.ElionaID = booking.BookingID.Int32
 			updatedBookings = append(updatedBookings, a)
-			booking.ExchangeChangeKey = null.StringFrom(a.ExchangeChangeKey)
-			if err := conf.UpdateBookingExchangeChangeID(booking); err != nil {
-				log.Error("conf", "updating booking: %v", err)
-				return err
-			}
 		}
 		for i := range new {
 			new[i].AssetID = ast.AssetID.Int32
@@ -202,8 +197,8 @@ func collectResources(config apiserver.Configuration) error {
 
 			newBookings = append(newBookings, a)
 			booking := appdb.Booking{
-				ExchangeID:        null.StringFrom(a.ExchangeID),
-				ExchangeChangeKey: null.StringFrom(a.ExchangeChangeKey),
+				ExchangeID:  null.StringFrom(a.ExchangeIDInResourceMailbox),
+				ExchangeUID: null.StringFrom(a.ExchangeUID),
 			}
 			if err := conf.InsertBooking(booking); err != nil {
 				log.Error("conf", "inserting booking: %v", err)
@@ -213,9 +208,9 @@ func collectResources(config apiserver.Configuration) error {
 		for i := range cancelled {
 			cancelled[i].AssetID = ast.AssetID.Int32
 			a := cancelled[i]
-			booking, err := conf.GetBookingByExchangeID(a.ExchangeID)
+			booking, err := conf.GetBookingByExchangeID(a.ExchangeIDInResourceMailbox)
 			if err != nil && !errors.Is(err, conf.ErrNotFound) {
-				log.Error("conf", "getting booking for exchange ID %s: %v", a.ExchangeID, err)
+				log.Error("conf", "getting booking for exchange ID %s: %v", a.ExchangeIDInResourceMailbox, err)
 				return err
 			} else if errors.Is(err, conf.ErrNotFound) || !booking.BookingID.Valid {
 				// Does not matter, cancelled anyways
@@ -223,11 +218,6 @@ func collectResources(config apiserver.Configuration) error {
 			}
 			a.ElionaID = booking.BookingID.Int32
 			cancelledBookings = append(cancelledBookings, a)
-			booking.ExchangeChangeKey = null.StringFrom(a.ExchangeChangeKey)
-			if err := conf.UpdateBookingExchangeChangeID(booking); err != nil {
-				log.Error("conf", "updating booking: %v", err)
-				return err
-			}
 		}
 		if err := conf.PersistSyncState(ast.ID, newSyncState); err != nil {
 			log.Error("conf", "persisting sync state for %v: %v", ast.ID, err)
@@ -291,11 +281,13 @@ func cancelInEWS(book model.Booking, config apiserver.Configuration) {
 	if err != nil {
 		log.Error("conf", "getting booking for Eliona ID %v: %v", book.ElionaID, err)
 		return
-	} else if !booking.ExchangeID.Valid {
-		log.Error("db", "cancelling booking: booking %v does not have exchangeID", booking.ID)
+	} else if !booking.ExchangeID.Valid || !booking.ExchangeUID.Valid {
+		log.Error("db", "cancelling booking: booking %v does not have exchangeID or UID", booking.ID)
 		return
 	}
-	if err := ewsHelper.CancelEvent(booking.ExchangeID.String, book.OrganizerEmail); err != nil {
+	book.ExchangeIDInResourceMailbox = booking.ExchangeID.String
+	book.ExchangeUID = booking.ExchangeUID.String
+	if err := ewsHelper.CancelEvent(book); err != nil {
 		log.Error("ews", "cancelling event: %v", err)
 		return
 	}
@@ -317,16 +309,16 @@ func bookInEWS(book model.Booking, config apiserver.Configuration) {
 		Location:  asset.ProviderID,
 		Attendees: []string{asset.ProviderID},
 	}
-	itemID, changeKey, err := ewsHelper.CreateAppointment(app)
+	booking, err := ewsHelper.CreateAppointment(app)
 	if err != nil {
 		log.Error("ews", "creating appointment: %v", err)
 		return
 	}
 	log.Debug("ews", "created a booking for %v", book.OrganizerEmail)
 	b := appdb.Booking{
-		ExchangeID:        null.StringFrom(itemID),
-		ExchangeChangeKey: null.StringFrom(changeKey),
-		BookingID:         null.Int32From(book.ElionaID),
+		ExchangeID:  null.StringFrom(booking.ExchangeIDInResourceMailbox),
+		ExchangeUID: null.StringFrom(booking.ExchangeUID),
+		BookingID:   null.Int32From(book.ElionaID),
 	}
 	if err := conf.InsertBooking(b); err != nil {
 		log.Error("conf", "inserting booking: %v", err)

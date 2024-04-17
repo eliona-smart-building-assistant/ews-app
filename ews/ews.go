@@ -198,6 +198,7 @@ type delete struct {
 
 type calendarItem struct {
 	ItemId           itemId    `xml:"ItemId"`
+	UID              string    `xml:"UID"`
 	Subject          string    `xml:"Subject"`
 	DateTimeReceived string    `xml:"DateTimeReceived"`
 	Start            time.Time `xml:"Start"`
@@ -235,6 +236,7 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, syncState string) (new
             <m:ItemShape>
                 <t:BaseShape>IdOnly</t:BaseShape>
                 <t:AdditionalProperties>
+                    <t:FieldURI FieldURI="calendar:UID"/>
                     <t:FieldURI FieldURI="item:Subject"/>
                     <t:FieldURI FieldURI="item:DateTimeReceived"/>
                     <t:FieldURI FieldURI="calendar:Start"/>
@@ -288,45 +290,46 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, syncState string) (new
 			continue
 		}
 		item := change.CalendarItem
-		email, err := h.resolveDN(item.Organizer.Mailbox.EmailAddress)
+		organizerEmail, err := h.resolveDN(item.Organizer.Mailbox.EmailAddress)
 		if err != nil {
 			return nil, nil, nil, syncState, fmt.Errorf("resolving distinguished name '%s': %v", item.Organizer.Mailbox.EmailAddress, err)
 		}
+
 		new = append(new, model.Booking{
-			ExchangeID:        item.ItemId.Id,
-			ExchangeChangeKey: item.ItemId.ChangeKey,
-			Subject:           item.Subject,
-			OrganizerEmail:    email,
-			Start:             item.Start,
-			End:               item.End,
-			Cancelled:         false,
+			ExchangeIDInResourceMailbox: item.ItemId.Id,
+			ExchangeUID:                 item.UID,
+			Subject:                     item.Subject,
+			OrganizerEmail:              organizerEmail,
+			Start:                       item.Start,
+			End:                         item.End,
+			Cancelled:                   false,
 		})
 	}
 	for _, change := range changes.Update {
 		if err := change.checkItem(); err != nil {
-			log.Debug("ews", "item ID %v is not complete. Skipped updating.", change.CalendarItem.ItemId.Id)
+			log.Debug("ews", "skipped updating calendar item: %v", err)
 			continue
 		}
 		item := change.CalendarItem
-		email, err := h.resolveDN(item.Organizer.Mailbox.EmailAddress)
+		organizerEmail, err := h.resolveDN(item.Organizer.Mailbox.EmailAddress)
 		if err != nil {
 			return nil, nil, nil, syncState, fmt.Errorf("resolving distinguished name '%s': %v", item.Organizer.Mailbox.EmailAddress, err)
 		}
+
 		updated = append(updated, model.Booking{
-			ExchangeID:        item.ItemId.Id,
-			ExchangeChangeKey: item.ItemId.ChangeKey,
-			Subject:           item.Subject,
-			OrganizerEmail:    email,
-			Start:             item.Start,
-			End:               item.End,
-			Cancelled:         false,
+			ExchangeIDInResourceMailbox: item.ItemId.Id,
+			ExchangeUID:                 item.UID,
+			Subject:                     item.Subject,
+			OrganizerEmail:              organizerEmail,
+			Start:                       item.Start,
+			End:                         item.End,
+			Cancelled:                   false,
 		})
 	}
 	for _, change := range changes.Delete {
 		cancelled = append(cancelled, model.Booking{
-			ExchangeID:        change.ItemId.Id,
-			ExchangeChangeKey: change.ItemId.ChangeKey,
-			Cancelled:         true,
+			ExchangeIDInResourceMailbox: change.ItemId.Id,
+			Cancelled:                   true,
 		})
 	}
 
@@ -368,7 +371,7 @@ type Appointment struct {
 	Attendees []string
 }
 
-func (h *EWSHelper) CreateAppointment(appointment Appointment) (itemID, changeKey string, err error) {
+func (h *EWSHelper) CreateAppointment(appointment Appointment) (booking model.Booking, err error) {
 	requestXML := fmt.Sprintf(`
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                   xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
@@ -410,18 +413,29 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (itemID, changeKe
 
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
-		return "", "", fmt.Errorf("requesting create appointment: %w", err)
+		return model.Booking{}, fmt.Errorf("requesting create appointment: %w", err)
 	}
 
 	var env appointmentCreated
 	if err := xml.Unmarshal(responseXML, &env); err != nil {
-		return "", "", fmt.Errorf("unmarshaling XML: %v", err)
+		return model.Booking{}, fmt.Errorf("unmarshaling XML: %v", err)
 	}
 
-	itemID = env.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.Items.CalendarItem.ItemId.ID
-	changeKey = env.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.Items.CalendarItem.ItemId.ChangeKey
+	organizerEventID := env.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.Items.CalendarItem.ItemId.ID
 
-	return itemID, changeKey, nil
+	uid, err := h.getUIDFromItemId(appointment.Organizer, organizerEventID)
+	if err != nil {
+		return model.Booking{}, fmt.Errorf("getting UID from ItemID: %v", err)
+	}
+	resourceEventID, _, err := h.findEventUIDInMailbox(appointment.Location, uid)
+	if err != nil {
+		return model.Booking{}, fmt.Errorf("finding organizer event ID: %v", err)
+	}
+
+	return model.Booking{
+		ExchangeIDInResourceMailbox: resourceEventID,
+		ExchangeUID:                 uid,
+	}, nil
 }
 
 func formatAttendees(attendees []string) string {
@@ -459,14 +473,9 @@ type appointmentCreated struct {
 	} `xml:"Body"`
 }
 
-func (h *EWSHelper) CancelEvent(roomItemId string, organizer string) error {
-	uid, err := h.getUIDFromItemId("noisy@z0vmd.onmicrosoft.com", roomItemId)
-	if err != nil {
-		return fmt.Errorf("getting UID from ItemID: %v", err)
-	}
-
+func (h *EWSHelper) CancelEvent(event model.Booking) error {
 	// Find the organizer's eventId and changeKey using the UID
-	eventID, changeKey, err := h.findEventUIDInMailbox(organizer, uid)
+	eventID, changeKey, err := h.findEventUIDInMailbox(event.OrganizerEmail, event.ExchangeUID)
 	if err != nil {
 		return fmt.Errorf("finding organizer event ID: %v", err)
 	}
@@ -491,7 +500,7 @@ func (h *EWSHelper) CancelEvent(roomItemId string, organizer string) error {
       </m:Items>
     </m:CreateItem>
   </soap:Body>
-</soap:Envelope>`, organizer, eventID, changeKey)
+</soap:Envelope>`, event.OrganizerEmail, eventID, changeKey)
 
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {

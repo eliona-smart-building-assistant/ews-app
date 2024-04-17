@@ -54,7 +54,7 @@ func notifyUser(userId string, projectId string, assetsCreated int) error {
 				}),
 			}).
 		Execute()
-	log.Debug("eliona", "posted notification about CAC: %v", receipt)
+	log.Debug("eliona", "posted notification about CAC: %s", *receipt.Status)
 	if err != nil {
 		return fmt.Errorf("posting CAC notification: %v", err)
 	}

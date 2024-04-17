@@ -42,9 +42,9 @@ func (c *client) Book(bookings []model.Booking) error {
 			return err
 		}
 		if err := conf.UpsertBooking(appdb.Booking{
-			ExchangeID:        null.StringFrom(b.ExchangeID),
-			ExchangeChangeKey: null.StringFrom(b.ExchangeChangeKey),
-			BookingID:         null.Int32From(responseBooking.Id),
+			ExchangeID:  null.StringFrom(b.ExchangeIDInResourceMailbox),
+			ExchangeUID: null.StringFrom(b.ExchangeUID),
+			BookingID:   null.Int32From(responseBooking.Id),
 		}); err != nil {
 			return fmt.Errorf("upserting booking id: %v", err)
 		}

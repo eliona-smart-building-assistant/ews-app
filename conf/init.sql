@@ -47,9 +47,9 @@ create table if not exists ews.asset
 create table if not exists ews.booking
 (
 	id                  bigserial primary key,
-	exchange_id         text unique,
-	exchange_change_key text,
-	booking_id          int unique
+	exchange_id         text unique, -- Always from the resource's perspective
+	exchange_uid        text unique, -- Unique identifier regardless of perspective
+	booking_id          int  unique
 );
 
 -- Makes the new objects available for all other init steps
