@@ -178,7 +178,7 @@ type responseMessages struct {
 
 type syncFolderItemsResponseMessage struct {
 	SyncState               string  `xml:"SyncState"`
-	IncludesLastItemInRange string  `xml:"IncludesLastItemInRange"` // TODO: Implement pagination
+	IncludesLastItemInRange bool    `xml:"IncludesLastItemInRange"`
 	Changes                 changes `xml:"Changes"`
 }
 
@@ -221,6 +221,10 @@ type mailbox struct {
 }
 
 func (h *EWSHelper) GetRoomAppointments(roomEmail string, syncState string) (new []model.Booking, updated []model.Booking, cancelled []model.Booking, newSyncState string, err error) {
+	// Every synchronization, we will get a list of Create, Update and Delete events (and some cruft
+	// amongst it). When there is no SyncState, we will get only Create events for all events
+	// present on server. If that happens to be a lot of events, these will be created over time by
+	// chunks of MaxChangesReturned until IncludesLastItemInRange will be true.
 	requestXML := fmt.Sprintf(`
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
     <soap:Header>
@@ -252,7 +256,7 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, syncState string) (new
                 </t:DistinguishedFolderId>
             </m:SyncFolderId>
             <m:SyncState>%s</m:SyncState>
-            <m:MaxChangesReturned>65536</m:MaxChangesReturned>
+            <m:MaxChangesReturned>256</m:MaxChangesReturned>
         </m:SyncFolderItems>
     </soap:Body>
 </soap:Envelope>`, roomEmail, roomEmail, syncState)
