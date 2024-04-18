@@ -24,6 +24,7 @@ create table if not exists ews.configuration
 	tenant_id            text not null,
 	service_user_upn     text not null,
 	room_list_upn        text not null,
+	booking_app_url      text not null,
 	refresh_interval     integer not null default 60,
 	request_timeout      integer not null default 120,
 	asset_filter         json,

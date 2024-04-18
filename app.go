@@ -225,8 +225,7 @@ func collectResources(config apiserver.Configuration) error {
 		}
 	}
 
-	// todo: unhardcode
-	bc := booking.NewClient("http://localhost:3031/v1")
+	bc := booking.NewClient(*config.BookingAppURL)
 	if err := bc.Book(newBookings); err != nil {
 		log.Error("Booking", "booking: %v", err)
 	}
@@ -243,8 +242,7 @@ func collectResources(config apiserver.Configuration) error {
 }
 
 func listenForBookings(config apiserver.Configuration) {
-	// todo: unhardcode
-	baseURL := "http://localhost:3031/v1"
+	baseURL := *config.BookingAppURL
 	assetIDs, err := conf.GetWatchedAssetIDs()
 	if err != nil {
 		log.Error("conf", "getting list of assetIDs to watch: %v", err)

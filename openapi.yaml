@@ -238,6 +238,10 @@ components:
           type: string
           description: Email address of the room list that will be imported to Eliona.
           nullable: true
+        bookingAppURL:
+          type: string
+          description: URL where the Eliona Booking app is reachable.
+          nullable: true
         enable:
           type: boolean
           description: Flag to enable or disable fetching from this API

@@ -30,6 +30,9 @@ type Configuration struct {
 	// Email address of the room list that will be imported to Eliona.
 	RoomListUPN *string `json:"roomListUPN,omitempty"`
 
+	// URL where the Eliona Booking app is reachable.
+	BookingAppURL *string `json:"bookingAppURL,omitempty"`
+
 	// Flag to enable or disable fetching from this API
 	Enable *bool `json:"enable,omitempty"`
 

@@ -31,6 +31,7 @@ type Configuration struct {
 	TenantID        string            `boil:"tenant_id" json:"tenant_id" toml:"tenant_id" yaml:"tenant_id"`
 	ServiceUserUpn  string            `boil:"service_user_upn" json:"service_user_upn" toml:"service_user_upn" yaml:"service_user_upn"`
 	RoomListUpn     string            `boil:"room_list_upn" json:"room_list_upn" toml:"room_list_upn" yaml:"room_list_upn"`
+	BookingAppURL   string            `boil:"booking_app_url" json:"booking_app_url" toml:"booking_app_url" yaml:"booking_app_url"`
 	RefreshInterval int32             `boil:"refresh_interval" json:"refresh_interval" toml:"refresh_interval" yaml:"refresh_interval"`
 	RequestTimeout  int32             `boil:"request_timeout" json:"request_timeout" toml:"request_timeout" yaml:"request_timeout"`
 	AssetFilter     null.JSON         `boil:"asset_filter" json:"asset_filter,omitempty" toml:"asset_filter" yaml:"asset_filter,omitempty"`
@@ -50,6 +51,7 @@ var ConfigurationColumns = struct {
 	TenantID        string
 	ServiceUserUpn  string
 	RoomListUpn     string
+	BookingAppURL   string
 	RefreshInterval string
 	RequestTimeout  string
 	AssetFilter     string
@@ -64,6 +66,7 @@ var ConfigurationColumns = struct {
 	TenantID:        "tenant_id",
 	ServiceUserUpn:  "service_user_upn",
 	RoomListUpn:     "room_list_upn",
+	BookingAppURL:   "booking_app_url",
 	RefreshInterval: "refresh_interval",
 	RequestTimeout:  "request_timeout",
 	AssetFilter:     "asset_filter",
@@ -80,6 +83,7 @@ var ConfigurationTableColumns = struct {
 	TenantID        string
 	ServiceUserUpn  string
 	RoomListUpn     string
+	BookingAppURL   string
 	RefreshInterval string
 	RequestTimeout  string
 	AssetFilter     string
@@ -94,6 +98,7 @@ var ConfigurationTableColumns = struct {
 	TenantID:        "configuration.tenant_id",
 	ServiceUserUpn:  "configuration.service_user_upn",
 	RoomListUpn:     "configuration.room_list_upn",
+	BookingAppURL:   "configuration.booking_app_url",
 	RefreshInterval: "configuration.refresh_interval",
 	RequestTimeout:  "configuration.request_timeout",
 	AssetFilter:     "configuration.asset_filter",
@@ -209,6 +214,7 @@ var ConfigurationWhere = struct {
 	TenantID        whereHelperstring
 	ServiceUserUpn  whereHelperstring
 	RoomListUpn     whereHelperstring
+	BookingAppURL   whereHelperstring
 	RefreshInterval whereHelperint32
 	RequestTimeout  whereHelperint32
 	AssetFilter     whereHelpernull_JSON
@@ -223,6 +229,7 @@ var ConfigurationWhere = struct {
 	TenantID:        whereHelperstring{field: "\"ews\".\"configuration\".\"tenant_id\""},
 	ServiceUserUpn:  whereHelperstring{field: "\"ews\".\"configuration\".\"service_user_upn\""},
 	RoomListUpn:     whereHelperstring{field: "\"ews\".\"configuration\".\"room_list_upn\""},
+	BookingAppURL:   whereHelperstring{field: "\"ews\".\"configuration\".\"booking_app_url\""},
 	RefreshInterval: whereHelperint32{field: "\"ews\".\"configuration\".\"refresh_interval\""},
 	RequestTimeout:  whereHelperint32{field: "\"ews\".\"configuration\".\"request_timeout\""},
 	AssetFilter:     whereHelpernull_JSON{field: "\"ews\".\"configuration\".\"asset_filter\""},
@@ -260,8 +267,8 @@ func (r *configurationR) GetAssets() AssetSlice {
 type configurationL struct{}
 
 var (
-	configurationAllColumns            = []string{"id", "client_id", "client_secret", "tenant_id", "service_user_upn", "room_list_upn", "refresh_interval", "request_timeout", "asset_filter", "active", "enable", "project_ids", "user_id"}
-	configurationColumnsWithoutDefault = []string{"client_id", "client_secret", "tenant_id", "service_user_upn", "room_list_upn"}
+	configurationAllColumns            = []string{"id", "client_id", "client_secret", "tenant_id", "service_user_upn", "room_list_upn", "booking_app_url", "refresh_interval", "request_timeout", "asset_filter", "active", "enable", "project_ids", "user_id"}
+	configurationColumnsWithoutDefault = []string{"client_id", "client_secret", "tenant_id", "service_user_upn", "room_list_upn", "booking_app_url"}
 	configurationColumnsWithDefault    = []string{"id", "refresh_interval", "request_timeout", "asset_filter", "active", "enable", "project_ids", "user_id"}
 	configurationPrimaryKeyColumns     = []string{"id"}
 	configurationGeneratedColumns      = []string{}
