@@ -286,10 +286,6 @@ func PersistSyncState(assetID int64, syncState string) error {
 	return err
 }
 
-func InsertBooking(booking appdb.Booking) error {
-	return booking.InsertG(context.Background(), boil.Infer())
-}
-
 func GetBookingByExchangeID(exchangeID string) (appdb.Booking, error) {
 	booking, err := appdb.Bookings(
 		appdb.BookingWhere.ExchangeID.EQ(null.StringFrom(exchangeID)),

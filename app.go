@@ -200,8 +200,8 @@ func collectResources(config apiserver.Configuration) error {
 				ExchangeID:  null.StringFrom(a.ExchangeIDInResourceMailbox),
 				ExchangeUID: null.StringFrom(a.ExchangeUID),
 			}
-			if err := conf.InsertBooking(booking); err != nil {
-				log.Error("conf", "inserting booking: %v", err)
+			if err := conf.UpsertBooking(booking); err != nil {
+				log.Error("conf", "upserting new synchronized booking: %v", err)
 				return err
 			}
 		}
@@ -318,8 +318,8 @@ func bookInEWS(book model.Booking, config apiserver.Configuration) {
 		ExchangeUID: null.StringFrom(booking.ExchangeUID),
 		BookingID:   null.Int32From(book.ElionaID),
 	}
-	if err := conf.InsertBooking(b); err != nil {
-		log.Error("conf", "inserting booking: %v", err)
+	if err := conf.UpsertBooking(b); err != nil {
+		log.Error("conf", "upserting newly created booking: %v", err)
 		return
 	}
 }
