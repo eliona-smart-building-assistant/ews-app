@@ -433,7 +433,7 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (booking model.Bo
 	}
 	resourceEventID, _, err := h.findEventUIDInMailbox(appointment.Location, uid)
 	if err != nil {
-		return model.Booking{}, fmt.Errorf("finding organizer event ID: %v", err)
+		return model.Booking{}, fmt.Errorf("finding resource event ID: %v", err)
 	}
 
 	return model.Booking{
@@ -630,7 +630,7 @@ func getObjectIdStringFromUid(id string) (string, error) {
 // stems from the binary nature of the GlobalObjectId in EWS. This conversion ensures that the value
 // is correctly formatted for inclusion in SOAP requests, enabling effective querying and manipulation
 // of calendar items based on their universal identifier.
-func (h *EWSHelper) findEventUIDInMailbox(organizer, uid string) (itemID string, changeKey string, err error) {
+func (h *EWSHelper) findEventUIDInMailbox(mailbox, uid string) (itemID string, changeKey string, err error) {
 	globalObjectID, err := getObjectIdStringFromUid(uid)
 	if err != nil {
 		return "", "", fmt.Errorf("error converting UID: %v", err)
@@ -668,7 +668,7 @@ func (h *EWSHelper) findEventUIDInMailbox(organizer, uid string) (itemID string,
         </m:ParentFolderIds>
       </m:FindItem>
     </soap:Body>
-</soap:Envelope>`, organizer, globalObjectID, organizer)
+</soap:Envelope>`, mailbox, globalObjectID, mailbox)
 
 	respBody, err := h.sendRequest(requestXML)
 	if err != nil {
