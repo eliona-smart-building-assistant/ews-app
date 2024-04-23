@@ -98,9 +98,9 @@ func (c *client) book(bookings bookingRequest) (bookingResponse, error) {
 	return respBody, nil
 }
 
-func (c *client) Cancel(bookings []model.Booking) error {
+func (c *client) CancelSlice(bookings []model.Booking) error {
 	for _, b := range bookings {
-		err := c.cancel(b.ElionaID)
+		err := c.Cancel(b.ElionaID, "cancelled")
 		if err != nil {
 			return err
 		}
@@ -108,8 +108,8 @@ func (c *client) Cancel(bookings []model.Booking) error {
 	return nil
 }
 
-func (c *client) cancel(elionaID int32) error {
-	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/sync/bookings/%v", c.BaseURL, elionaID), nil)
+func (c *client) Cancel(elionaID int32, reason string) error {
+	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/sync/bookings/%v?reason=%v", c.BaseURL, elionaID, reason), nil)
 	if err != nil {
 		return err
 	}

@@ -234,7 +234,7 @@ func collectResources(config apiserver.Configuration) error {
 		log.Error("Booking", "updating bookings: %v", err)
 	}
 
-	if err := bc.Cancel(cancelledBookings); err != nil {
+	if err := bc.CancelSlice(cancelledBookings); err != nil {
 		log.Error("Booking", "cancelling bookings: %v", err)
 	}
 
@@ -307,15 +307,28 @@ func bookInEWS(book model.Booking, config apiserver.Configuration) {
 		Location:  asset.ProviderID,
 		Attendees: []string{asset.ProviderID},
 	}
-	booking, err := ewsHelper.CreateAppointment(app)
-	if err != nil {
+	a, err := ewsHelper.CreateAppointment(app)
+	book.ExchangeUID = a.ExchangeUID
+	book.ExchangeIDInResourceMailbox = a.ExchangeIDInResourceMailbox
+	if errors.Is(err, ews.ErrDeclined) {
+		bc := booking.NewClient(*config.BookingAppURL)
+		if err := ewsHelper.CancelEvent(book); err != nil {
+			log.Error("ews", "cancelling conflicting event: %v", err)
+			return
+		}
+		if err := bc.Cancel(book.ElionaID, "conflict"); err != nil {
+			log.Error("booking", "cancelling conflicting appointment: %v", err)
+			return
+		}
+		log.Debug("ews", "booking for %v was conflicting; cancelled", book.OrganizerEmail)
+	} else if err != nil {
 		log.Error("ews", "creating appointment: %v", err)
 		return
 	}
 	log.Debug("ews", "created a booking for %v", book.OrganizerEmail)
 	b := appdb.Booking{
-		ExchangeID:  null.StringFrom(booking.ExchangeIDInResourceMailbox),
-		ExchangeUID: null.StringFrom(booking.ExchangeUID),
+		ExchangeID:  null.StringFrom(book.ExchangeIDInResourceMailbox),
+		ExchangeUID: null.StringFrom(book.ExchangeUID),
 		BookingID:   null.Int32From(book.ElionaID),
 	}
 	if err := conf.UpsertBooking(b); err != nil {

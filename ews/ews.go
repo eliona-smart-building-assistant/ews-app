@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
+	"errors"
 	"ews/apiserver"
 	"ews/model"
 	"fmt"
@@ -32,6 +33,10 @@ import (
 	"github.com/eliona-smart-building-assistant/go-utils/log"
 	"golang.org/x/oauth2/clientcredentials"
 )
+
+var ErrDeclined = errors.New("resource has declined invitation")
+
+var errNotFound = errors.New("entity not found")
 
 type EWSHelper struct {
 	Client       *http.Client
@@ -431,15 +436,24 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (booking model.Bo
 	if err != nil {
 		return model.Booking{}, fmt.Errorf("getting UID from ItemID: %v", err)
 	}
+	booking.ExchangeUID = uid
+
+	// Let's give the server some time to process the invitation. Sometimes it's
+	// instant, sometimes 2 seconds aren't enough. This should be long enough
+	// time.
+	time.Sleep(15 * time.Second)
+
 	resourceEventID, _, err := h.findEventUIDInMailbox(appointment.Location, uid)
-	if err != nil {
-		return model.Booking{}, fmt.Errorf("finding resource event ID: %v", err)
+	if errors.Is(err, errNotFound) {
+		// The resource has probably declined the invitation.
+		return booking, ErrDeclined
+	} else if err != nil {
+		return booking, fmt.Errorf("finding resource event ID: %v", err)
 	}
 
-	return model.Booking{
-		ExchangeIDInResourceMailbox: resourceEventID,
-		ExchangeUID:                 uid,
-	}, nil
+	booking.ExchangeIDInResourceMailbox = resourceEventID
+
+	return booking, nil
 }
 
 func formatAttendees(attendees []string) string {
@@ -701,7 +715,7 @@ func (h *EWSHelper) findEventUIDInMailbox(mailbox, uid string) (itemID string, c
 	}
 
 	if len(response.Body.FindItemResponse.ResponseMessages.FindItemResponseMessage.RootFolder.Items.CalendarItem) == 0 {
-		return "", "", fmt.Errorf("event not found. response: %v", string(respBody))
+		return "", "", errNotFound
 	}
 
 	item := response.Body.FindItemResponse.ResponseMessages.FindItemResponseMessage.RootFolder.Items.CalendarItem[0].ItemId
