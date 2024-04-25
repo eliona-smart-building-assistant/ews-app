@@ -25,7 +25,7 @@
 	"name": "ews_room",
 	"translation": {
 		"de": "Microsoft Exchange Raum",
-		"en": "Microsoft Exchange Root"
+		"en": "Microsoft Exchange Room"
 	},
 	"urldoc": "",
 	"vendor": "Microsoft"
