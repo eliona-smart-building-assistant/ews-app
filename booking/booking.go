@@ -11,12 +11,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/eliona-smart-building-assistant/go-utils/log"
 	"github.com/gorilla/websocket"
 	"github.com/volatiletech/null/v8"
 )
+
+const clientReference = "ews-app"
 
 type client struct {
 	BaseURL string
@@ -75,7 +78,9 @@ func (c *client) book(bookings bookingRequest) (bookingResponse, error) {
 		return bookingResponse{}, err
 	}
 
-	resp, err := http.Post(c.BaseURL+"/sync/bookings", "application/json", bytes.NewBuffer(body))
+	v := url.Values{}
+	v.Add("clientReference", clientReference)
+	resp, err := http.Post(c.BaseURL+"/bookings?"+v.Encode(), "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		return bookingResponse{}, err
 	}
@@ -109,7 +114,10 @@ func (c *client) CancelSlice(bookings []model.Booking) error {
 }
 
 func (c *client) Cancel(elionaID int32, reason string) error {
-	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/sync/bookings/%v?reason=%v", c.BaseURL, elionaID, reason), nil)
+	v := url.Values{}
+	v.Add("clientReference", clientReference)
+	v.Add("reason", reason)
+	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/bookings/%v?%s", c.BaseURL, elionaID, v.Encode()), nil)
 	if err != nil {
 		return err
 	}
@@ -136,7 +144,8 @@ func (c *client) Cancel(elionaID int32, reason string) error {
 }
 
 type BookingsSubscriptionRequest struct {
-	AssetIDs []int `json:"assetIDs"`
+	AssetIDs        []int  `json:"assetIDs"`
+	ClientReference string `json:"clientReference"`
 }
 
 func (c *client) subscribeBookings(assetIDs []int) (*websocket.Conn, error) {
@@ -147,7 +156,7 @@ func (c *client) subscribeBookings(assetIDs []int) (*websocket.Conn, error) {
 		return nil, err
 	}
 
-	subscriptionRequest := BookingsSubscriptionRequest{AssetIDs: assetIDs}
+	subscriptionRequest := BookingsSubscriptionRequest{AssetIDs: assetIDs, ClientReference: clientReference}
 	if err := conn.WriteJSON(subscriptionRequest); err != nil {
 		conn.Close()
 		return nil, err
