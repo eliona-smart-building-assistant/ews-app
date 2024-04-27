@@ -2,6 +2,16 @@
 	"attributes": [
 		{
 			"enable": true,
+			"name": "bookable",
+			"subtype": "property",
+			"translation": {
+				"de": "Buchbar",
+				"en": "Bookable"
+			},
+			"isDigital": true
+		},
+		{
+			"enable": true,
 			"name": "email",
 			"subtype": "info",
 			"translation": {

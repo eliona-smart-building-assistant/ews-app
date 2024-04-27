@@ -42,8 +42,9 @@ type Booking struct {
 // Assets
 
 type Room struct {
-	Email string `eliona:"email,filterable" subtype:"info"`
-	Name  string `eliona:"name,filterable"`
+	Email    string `eliona:"email,filterable" subtype:"info"`
+	Name     string `eliona:"name,filterable"`
+	Bookable int8   `eliona:"bookable"`
 
 	Config apiserver.Configuration
 }

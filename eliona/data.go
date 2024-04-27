@@ -16,6 +16,7 @@ const ClientReference string = "ews-app"
 func UpsertAssetData(config apiserver.Configuration, assets []model.Room) error {
 	for _, projectId := range *config.ProjectIDs {
 		for _, a := range assets {
+			a.Bookable = 1
 			log.Debug("Eliona", "upserting data for asset: config %d and asset '%v'", config.Id, a.GetGAI())
 			assetId, err := conf.GetAssetId(context.Background(), config, projectId, a.GetGAI())
 			if err != nil {
