@@ -1,18 +1,18 @@
 {
   "name": "ews",
-  "elionaMinVersion": "v12.0.0",
+  "elionaMinVersion": "v12.2.0",
   "displayName": {
     "en": "Exchange Server",
     "de": "Exchange Server"
   },
   "description": {
-    "en": "This template can be used to create an app stub for an Eliona environment.",
-    "de": "Diese Vorlage kann verwendet werden um eine App für Eliona zu erstellen."
+    "en": "The Exchange app provides synchronization of Eliona asset bookings with Microsoft Exchange servers.",
+    "de": "Die Exchange-App ermöglicht die Synchronisation der Eliona-Anlagenbuchungen mit Microsoft Exchange-Servern."
   },
   "dashboardTemplateNames": [],
   "apiUrl": "v1",
   "apiSpecificationPath": "/version/openapi.json",
-  "documentationUrl": "https://doc.eliona.io/eliona/referenzen/app-entwicklung",
+  "documentationUrl": "https://doc.eliona.io/collection/v/eliona-english/eliona-apps/apps/exchange",
   "useEnvironment": [
     "CONNECTION_STRING",
     "INIT_CONNECTION_STRING",
