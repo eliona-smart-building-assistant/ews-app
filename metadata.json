@@ -1,6 +1,6 @@
 {
   "name": "ews",
-  "elionaMinVersion": "v12.2.0",
+  "elionaMinVersion": "v12.1.9",
   "displayName": {
     "en": "Exchange Server",
     "de": "Exchange Server"
