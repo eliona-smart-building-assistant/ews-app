@@ -139,10 +139,12 @@ func collectResources(config apiserver.Configuration) error {
 	} else if cnt > 0 {
 		// New assets are present, need to subscribe again to include these.
 		triggerResubscribe()
-	}
-	if err := eliona.UpsertAssetData(config, root.Rooms); err != nil {
-		log.Error("eliona", "upserting asset data: %v", err)
-		return err
+
+		// Set all assets as bookable.
+		if err := eliona.UpsertAssetData(config, root.Rooms); err != nil {
+			log.Error("eliona", "upserting asset data: %v", err)
+			return err
+		}
 	}
 
 	assets, err := conf.GetAssets()
