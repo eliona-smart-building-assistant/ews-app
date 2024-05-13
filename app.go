@@ -58,6 +58,7 @@ func initialization() {
 }
 
 var once sync.Once
+var mu sync.Mutex
 var resubscribeTrigger = make(chan struct{}, 1)
 
 func collectData() {
@@ -152,8 +153,7 @@ func collectResources(config apiserver.Configuration) error {
 		log.Error("conf", "getting assets from DB: %v", err)
 		return err
 	}
-	var newBookings []model.Booking
-	var updatedBookings []model.Booking
+	var toBook []model.Booking
 	var cancelledBookings []model.Booking
 
 	for _, ast := range assets {
@@ -163,6 +163,8 @@ func collectResources(config apiserver.Configuration) error {
 		if ast.ProviderID == "" {
 			continue
 		}
+
+		mu.Lock()
 
 		syncState, err := conf.GetSyncState(ast.ID)
 		if err != nil {
@@ -181,35 +183,20 @@ func collectResources(config apiserver.Configuration) error {
 		for i := range updated {
 			updated[i].AssetID = ast.AssetID.Int32
 			a := updated[i]
-			booking, err := conf.GetBookingByExchangeID(a.ExchangeIDInResourceMailbox)
-			if err != nil && !errors.Is(err, conf.ErrNotFound) {
-				log.Error("conf", "getting booking for exchange ID %s: %v", a.ExchangeIDInResourceMailbox, err)
+			a, err := assignElionaID(a)
+			if err != nil {
 				return err
-			} else if errors.Is(err, conf.ErrNotFound) {
-				// Booking is new
-				new = append(new, a)
 			}
-
-			if !booking.BookingID.Valid {
-				// Booking not yet synced to Eliona
-				new = append(new, a)
-			}
-			a.ElionaID = booking.BookingID.Int32
-			updatedBookings = append(updatedBookings, a)
+			toBook = append(toBook, a)
 		}
 		for i := range new {
 			new[i].AssetID = ast.AssetID.Int32
 			a := new[i]
-
-			newBookings = append(newBookings, a)
-			booking := appdb.Booking{
-				ExchangeID:  null.StringFrom(a.ExchangeIDInResourceMailbox),
-				ExchangeUID: null.StringFrom(a.ExchangeUID),
-			}
-			if err := conf.UpsertBooking(booking); err != nil {
-				log.Error("conf", "upserting new synchronized booking: %v", err)
+			a, err := assignElionaID(a)
+			if err != nil {
 				return err
 			}
+			toBook = append(toBook, a)
 		}
 		for i := range cancelled {
 			cancelled[i].AssetID = ast.AssetID.Int32
@@ -229,15 +216,12 @@ func collectResources(config apiserver.Configuration) error {
 			log.Error("conf", "persisting sync state for %v: %v", ast.ID, err)
 			return err
 		}
+		mu.Unlock()
 	}
 
 	bc := booking.NewClient(*config.BookingAppURL)
-	if err := bc.Book(newBookings); err != nil {
+	if err := bc.Book(toBook); err != nil {
 		log.Error("Booking", "booking: %v", err)
-	}
-
-	if err := bc.Book(updatedBookings); err != nil {
-		log.Error("Booking", "updating bookings: %v", err)
 	}
 
 	if err := bc.CancelSlice(cancelledBookings); err != nil {
@@ -245,6 +229,24 @@ func collectResources(config apiserver.Configuration) error {
 	}
 
 	return nil
+}
+
+func assignElionaID(a model.Booking) (model.Booking, error) {
+	booking, err := conf.GetBookingByExchangeID(a.ExchangeIDInResourceMailbox)
+	if err != nil && !errors.Is(err, conf.ErrNotFound) {
+		log.Error("conf", "getting booking for exchange ID %s: %v", a.ExchangeIDInResourceMailbox, err)
+		return model.Booking{}, err
+	} else if errors.Is(err, conf.ErrNotFound) {
+		// Booking is new
+		return a, nil
+	}
+
+	if !booking.BookingID.Valid {
+		// Booking not yet synced to Eliona
+		return a, nil
+	}
+	a.ElionaID = booking.BookingID.Int32
+	return a, nil
 }
 
 func listenForBookings(config apiserver.Configuration) {
@@ -280,6 +282,8 @@ func listenForBookings(config apiserver.Configuration) {
 }
 
 func cancelInEWS(book model.Booking, config apiserver.Configuration) {
+	mu.Lock()
+	defer mu.Unlock()
 	ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret, book.OrganizerEmail)
 	booking, err := conf.GetBookingByElionaID(book.ElionaID)
 	if err != nil {
@@ -298,6 +302,8 @@ func cancelInEWS(book model.Booking, config apiserver.Configuration) {
 }
 
 func bookInEWS(book model.Booking, config apiserver.Configuration) {
+	mu.Lock()
+	defer mu.Unlock()
 	asset, err := conf.GetAssetById(book.AssetID)
 	if err != nil {
 		log.Error("conf", "getting asset ID %v: %v", book.AssetID, err)
