@@ -335,6 +335,12 @@ func bookInEWS(book model.Booking, config apiserver.Configuration) {
 		log.Debug("ews", "booking for %v was conflicting; cancelled", book.OrganizerEmail)
 	} else if err != nil {
 		log.Error("ews", "creating appointment: %v", err)
+		log.Debug("ews", "cancelling booking %v", book.ElionaID)
+		bc := booking.NewClient(*config.BookingAppURL)
+		if err := bc.Cancel(book.ElionaID, "error"); err != nil {
+			log.Error("booking", "cancelling errored appointment: %v", err)
+			return
+		}
 		return
 	}
 	log.Debug("ews", "created a booking for %v", book.OrganizerEmail)
