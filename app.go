@@ -289,12 +289,13 @@ func cancelInEWS(book model.Booking, config apiserver.Configuration) {
 	if err != nil {
 		log.Error("conf", "getting booking for Eliona ID %v: %v", book.ElionaID, err)
 		return
-	} else if !booking.ExchangeID.Valid || !booking.ExchangeUID.Valid {
-		log.Error("db", "cancelling booking: booking %v does not have exchangeID or UID", booking.ID)
+	} else if !booking.ExchangeID.Valid || !booking.ExchangeUID.Valid || !booking.ExchangeMailbox.Valid {
+		log.Error("db", "cancelling booking: booking %v does not have exchangeID, UID or Mailbox", booking.ID)
 		return
 	}
 	book.ExchangeIDInResourceMailbox = booking.ExchangeID.String
 	book.ExchangeUID = booking.ExchangeUID.String
+	book.OrganizerEmail = booking.ExchangeMailbox.String
 	if err := ewsHelper.CancelEvent(book); err != nil {
 		log.Error("ews", "cancelling event: %v", err)
 		return
@@ -309,6 +310,10 @@ func bookInEWS(book model.Booking, config apiserver.Configuration) {
 		log.Error("conf", "getting asset ID %v: %v", book.AssetID, err)
 		return
 	}
+	createAppointment(asset.ProviderID, book, config)
+}
+
+func createAppointment(assetEmail string, book model.Booking, config apiserver.Configuration) {
 	// We want to book on behalf of the organizer, thus we need to create a helper for each booking.
 	ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret, book.OrganizerEmail)
 	app := ews.Appointment{
@@ -316,8 +321,8 @@ func bookInEWS(book model.Booking, config apiserver.Configuration) {
 		Subject:   "Eliona booking",
 		Start:     book.Start,
 		End:       book.End,
-		Location:  asset.ProviderID,
-		Attendees: []string{asset.ProviderID},
+		Location:  assetEmail,
+		Attendees: []string{assetEmail},
 	}
 	a, err := ewsHelper.CreateAppointment(app)
 	book.ExchangeUID = a.ExchangeUID
@@ -333,8 +338,13 @@ func bookInEWS(book model.Booking, config apiserver.Configuration) {
 			return
 		}
 		log.Debug("ews", "booking for %v was conflicting; cancelled", book.OrganizerEmail)
+	} else if errors.Is(err, ews.ErrNonExistentMailbox) && book.OrganizerEmail != *config.ServiceUserUPN {
+		log.Debug("ews", "booking for %v will be booked by a service user", book.OrganizerEmail)
+		book.OrganizerEmail = *config.ServiceUserUPN
+		createAppointment(assetEmail, book, config)
+		return
 	} else if err != nil {
-		log.Error("ews", "creating appointment: %v", err)
+		log.Error("ews", "creating appointment %v: %v", book.ElionaID, err)
 		log.Debug("ews", "cancelling booking %v", book.ElionaID)
 		bc := booking.NewClient(*config.BookingAppURL)
 		if err := bc.Cancel(book.ElionaID, "error"); err != nil {
@@ -345,9 +355,10 @@ func bookInEWS(book model.Booking, config apiserver.Configuration) {
 	}
 	log.Debug("ews", "created a booking for %v", book.OrganizerEmail)
 	b := appdb.Booking{
-		ExchangeID:  null.StringFrom(book.ExchangeIDInResourceMailbox),
-		ExchangeUID: null.StringFrom(book.ExchangeUID),
-		BookingID:   null.Int32From(book.ElionaID),
+		ExchangeID:      null.StringFrom(book.ExchangeIDInResourceMailbox),
+		ExchangeUID:     null.StringFrom(book.ExchangeUID),
+		ExchangeMailbox: null.StringFrom(book.OrganizerEmail),
+		BookingID:       null.Int32From(book.ElionaID),
 	}
 	if err := conf.UpsertBooking(b); err != nil {
 		log.Error("conf", "upserting newly created booking: %v", err)

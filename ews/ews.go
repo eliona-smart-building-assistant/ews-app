@@ -35,6 +35,7 @@ import (
 )
 
 var ErrDeclined = errors.New("resource has declined invitation")
+var ErrNonExistentMailbox = errors.New("the SMTP address has no mailbox associated with it within this Exchange server")
 
 var errNotFound = errors.New("entity not found")
 
@@ -81,6 +82,19 @@ func (h *EWSHelper) sendRequest(xmlBody string) ([]byte, error) {
 	}
 
 	return responseBody, nil
+}
+
+type soapFault struct {
+	Body struct {
+		Fault struct {
+			FaultCode   string `xml:"faultcode"`
+			FaultString string `xml:"faultstring"`
+			Detail      struct {
+				ResponseCode string `xml:"ResponseCode"`
+				Message      string `xml:"Message"`
+			} `xml:"detail"`
+		} `xml:"Fault"`
+	} `xml:"Body"`
 }
 
 type roomsEnvelope struct {
@@ -271,18 +285,7 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, syncState string) (new
 	}
 
 	// First, try to unmarshal into SOAPFault to see if there was an error.
-	var soapFault struct {
-		Body struct {
-			Fault struct {
-				FaultCode   string `xml:"faultcode"`
-				FaultString string `xml:"faultstring"`
-				Detail      struct {
-					ResponseCode string `xml:"ResponseCode"`
-					Message      string `xml:"Message"`
-				} `xml:"detail"`
-			} `xml:"Fault"`
-		} `xml:"Body"`
-	}
+	var soapFault soapFault
 	if err := xml.Unmarshal(responseXML, &soapFault); err == nil && soapFault.Body.Fault.FaultCode != "" {
 		return nil, nil, nil, syncState, fmt.Errorf("SOAP fault: %s - %s", soapFault.Body.Fault.Detail.ResponseCode, soapFault.Body.Fault.Detail.Message)
 	}
@@ -425,6 +428,15 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (booking model.Bo
 		return model.Booking{}, fmt.Errorf("requesting create appointment: %w", err)
 	}
 
+	// First, try to unmarshal into SOAPFault to see if there was an error.
+	var soapFault soapFault
+	if err := xml.Unmarshal(responseXML, &soapFault); err == nil && soapFault.Body.Fault.FaultCode != "" {
+		if soapFault.Body.Fault.Detail.ResponseCode == "ErrorNonExistentMailbox" {
+			return model.Booking{}, ErrNonExistentMailbox
+		}
+		return model.Booking{}, fmt.Errorf("SOAP fault: %s - %s", soapFault.Body.Fault.Detail.ResponseCode, soapFault.Body.Fault.Detail.Message)
+	}
+
 	var env appointmentCreated
 	if err := xml.Unmarshal(responseXML, &env); err != nil {
 		return model.Booking{}, fmt.Errorf("unmarshaling XML: %v", err)
@@ -523,6 +535,15 @@ func (h *EWSHelper) CancelEvent(event model.Booking) error {
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
 		return fmt.Errorf("requesting cancel event: %w", err)
+	}
+
+	// First, try to unmarshal into SOAPFault to see if there was an error.
+	var soapFault soapFault
+	if err := xml.Unmarshal(responseXML, &soapFault); err == nil && soapFault.Body.Fault.FaultCode != "" {
+		if soapFault.Body.Fault.FaultCode == "ErrorNonExistentMailbox" {
+			return ErrNonExistentMailbox
+		}
+		return fmt.Errorf("SOAP fault: %s - %s", soapFault.Body.Fault.Detail.ResponseCode, soapFault.Body.Fault.Detail.Message)
 	}
 
 	var response struct {

@@ -50,6 +50,7 @@ create table if not exists ews.booking
 	id                  bigserial primary key,
 	exchange_id         text unique, -- Always from the resource's perspective
 	exchange_uid        text unique, -- Unique identifier regardless of perspective
+	exchange_mailbox    text,
 	booking_id          int  unique
 );
 
