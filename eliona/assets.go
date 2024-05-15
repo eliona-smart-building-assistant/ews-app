@@ -33,8 +33,12 @@ func CreateAssets(config apiserver.Configuration, root asset.Root) (totalCreated
 		}
 		totalCreated += assetsCreated
 		if assetsCreated != 0 {
-			if err := notifyUser(*config.UserId, projectId, assetsCreated); err != nil {
-				return 0, fmt.Errorf("notifying user about CAC: %v", err)
+			if config.UserId != nil {
+				if err := notifyUser(*config.UserId, projectId, assetsCreated); err != nil {
+					log.Error("eliona", "notifying user about CAC: %v", err)
+				}
+			} else {
+				log.Warn("eliona", "userID for config %v is nil", *config.Id)
 			}
 		}
 	}
