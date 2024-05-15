@@ -220,15 +220,27 @@ components:
           nullable: true
         clientId:
           type: string
-          description: Client ID
+          description: Client ID (for Exchange Online)
           nullable: true
         clientSecret:
           type: string
-          description: Client Secret
+          description: Client Secret (for Exchange Online)
           nullable: true
         tenantId:
           type: string
-          description: Tenant ID
+          description: Tenant ID (for Exchange Online)
+          nullable: true
+        ewsURL:
+          type: string
+          description: URL of EWS API (for Exchange Server NTLM auth)
+          nullable: true
+        username:
+          type: string
+          description: Username (for Exchange Server NTLM auth)
+          nullable: true
+        password:
+          type: string
+          description: Password (for Exchange Server NTLM auth)
           nullable: true
         serviceUserUPN:
           type: string

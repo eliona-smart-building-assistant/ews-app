@@ -29,6 +29,9 @@ type Configuration struct {
 	ClientID        string            `boil:"client_id" json:"client_id" toml:"client_id" yaml:"client_id"`
 	ClientSecret    string            `boil:"client_secret" json:"client_secret" toml:"client_secret" yaml:"client_secret"`
 	TenantID        string            `boil:"tenant_id" json:"tenant_id" toml:"tenant_id" yaml:"tenant_id"`
+	EwsURL          string            `boil:"ews_url" json:"ews_url" toml:"ews_url" yaml:"ews_url"`
+	Username        string            `boil:"username" json:"username" toml:"username" yaml:"username"`
+	Password        string            `boil:"password" json:"password" toml:"password" yaml:"password"`
 	ServiceUserUpn  string            `boil:"service_user_upn" json:"service_user_upn" toml:"service_user_upn" yaml:"service_user_upn"`
 	RoomListUpn     string            `boil:"room_list_upn" json:"room_list_upn" toml:"room_list_upn" yaml:"room_list_upn"`
 	BookingAppURL   string            `boil:"booking_app_url" json:"booking_app_url" toml:"booking_app_url" yaml:"booking_app_url"`
@@ -49,6 +52,9 @@ var ConfigurationColumns = struct {
 	ClientID        string
 	ClientSecret    string
 	TenantID        string
+	EwsURL          string
+	Username        string
+	Password        string
 	ServiceUserUpn  string
 	RoomListUpn     string
 	BookingAppURL   string
@@ -64,6 +70,9 @@ var ConfigurationColumns = struct {
 	ClientID:        "client_id",
 	ClientSecret:    "client_secret",
 	TenantID:        "tenant_id",
+	EwsURL:          "ews_url",
+	Username:        "username",
+	Password:        "password",
 	ServiceUserUpn:  "service_user_upn",
 	RoomListUpn:     "room_list_upn",
 	BookingAppURL:   "booking_app_url",
@@ -81,6 +90,9 @@ var ConfigurationTableColumns = struct {
 	ClientID        string
 	ClientSecret    string
 	TenantID        string
+	EwsURL          string
+	Username        string
+	Password        string
 	ServiceUserUpn  string
 	RoomListUpn     string
 	BookingAppURL   string
@@ -96,6 +108,9 @@ var ConfigurationTableColumns = struct {
 	ClientID:        "configuration.client_id",
 	ClientSecret:    "configuration.client_secret",
 	TenantID:        "configuration.tenant_id",
+	EwsURL:          "configuration.ews_url",
+	Username:        "configuration.username",
+	Password:        "configuration.password",
 	ServiceUserUpn:  "configuration.service_user_upn",
 	RoomListUpn:     "configuration.room_list_upn",
 	BookingAppURL:   "configuration.booking_app_url",
@@ -212,6 +227,9 @@ var ConfigurationWhere = struct {
 	ClientID        whereHelperstring
 	ClientSecret    whereHelperstring
 	TenantID        whereHelperstring
+	EwsURL          whereHelperstring
+	Username        whereHelperstring
+	Password        whereHelperstring
 	ServiceUserUpn  whereHelperstring
 	RoomListUpn     whereHelperstring
 	BookingAppURL   whereHelperstring
@@ -227,6 +245,9 @@ var ConfigurationWhere = struct {
 	ClientID:        whereHelperstring{field: "\"ews\".\"configuration\".\"client_id\""},
 	ClientSecret:    whereHelperstring{field: "\"ews\".\"configuration\".\"client_secret\""},
 	TenantID:        whereHelperstring{field: "\"ews\".\"configuration\".\"tenant_id\""},
+	EwsURL:          whereHelperstring{field: "\"ews\".\"configuration\".\"ews_url\""},
+	Username:        whereHelperstring{field: "\"ews\".\"configuration\".\"username\""},
+	Password:        whereHelperstring{field: "\"ews\".\"configuration\".\"password\""},
 	ServiceUserUpn:  whereHelperstring{field: "\"ews\".\"configuration\".\"service_user_upn\""},
 	RoomListUpn:     whereHelperstring{field: "\"ews\".\"configuration\".\"room_list_upn\""},
 	BookingAppURL:   whereHelperstring{field: "\"ews\".\"configuration\".\"booking_app_url\""},
@@ -267,8 +288,8 @@ func (r *configurationR) GetAssets() AssetSlice {
 type configurationL struct{}
 
 var (
-	configurationAllColumns            = []string{"id", "client_id", "client_secret", "tenant_id", "service_user_upn", "room_list_upn", "booking_app_url", "refresh_interval", "request_timeout", "asset_filter", "active", "enable", "project_ids", "user_id"}
-	configurationColumnsWithoutDefault = []string{"client_id", "client_secret", "tenant_id", "service_user_upn", "room_list_upn", "booking_app_url"}
+	configurationAllColumns            = []string{"id", "client_id", "client_secret", "tenant_id", "ews_url", "username", "password", "service_user_upn", "room_list_upn", "booking_app_url", "refresh_interval", "request_timeout", "asset_filter", "active", "enable", "project_ids", "user_id"}
+	configurationColumnsWithoutDefault = []string{"client_id", "client_secret", "tenant_id", "ews_url", "username", "password", "service_user_upn", "room_list_upn", "booking_app_url"}
 	configurationColumnsWithDefault    = []string{"id", "refresh_interval", "request_timeout", "asset_filter", "active", "enable", "project_ids", "user_id"}
 	configurationPrimaryKeyColumns     = []string{"id"}
 	configurationGeneratedColumns      = []string{}

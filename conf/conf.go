@@ -98,6 +98,11 @@ func dbConfigFromApiConfig(ctx context.Context, apiConfig apiserver.Configuratio
 	dbConfig.ClientID = *apiConfig.ClientId
 	dbConfig.ClientSecret = *apiConfig.ClientSecret
 	dbConfig.TenantID = *apiConfig.TenantId
+
+	dbConfig.EwsURL = *apiConfig.EwsURL
+	dbConfig.Username = *apiConfig.Username
+	dbConfig.Password = *apiConfig.Password
+
 	dbConfig.ServiceUserUpn = *apiConfig.ServiceUserUPN
 	dbConfig.RoomListUpn = *apiConfig.RoomListUPN
 	dbConfig.BookingAppURL = *apiConfig.BookingAppURL
@@ -130,6 +135,11 @@ func apiConfigFromDbConfig(dbConfig *appdb.Configuration) (apiConfig apiserver.C
 	apiConfig.ClientId = &dbConfig.ClientID
 	apiConfig.ClientSecret = &dbConfig.ClientSecret
 	apiConfig.TenantId = &dbConfig.TenantID
+
+	apiConfig.EwsURL = &dbConfig.EwsURL
+	apiConfig.Username = &dbConfig.Username
+	apiConfig.Password = &dbConfig.Password
+
 	apiConfig.ServiceUserUPN = &dbConfig.ServiceUserUpn
 	apiConfig.RoomListUPN = &dbConfig.RoomListUpn
 	apiConfig.BookingAppURL = &dbConfig.BookingAppURL

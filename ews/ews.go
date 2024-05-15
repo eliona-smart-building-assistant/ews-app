@@ -30,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Azure/go-ntlmssp"
 	"github.com/eliona-smart-building-assistant/go-utils/log"
 	"golang.org/x/oauth2/clientcredentials"
 )
@@ -42,27 +43,57 @@ var errNotFound = errors.New("entity not found")
 type EWSHelper struct {
 	Client       *http.Client
 	EwsURL       string
+	username     string
+	password     string
 	serviceUser  string
 	addressCache map[string]string
 }
 
-func NewEWSHelper(clientID, tenantID, clientSecret, serviceUser string) *EWSHelper {
-	oauth2Config := clientcredentials.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		TokenURL:     fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenantID),
-		Scopes:       []string{"https://outlook.office365.com/.default"},
+// NewEWSHelper creates a new instance of EWSHelper with OAuth or NTLM authentication based on the provided configuration
+func NewEWSHelper(config *apiserver.Configuration) *EWSHelper {
+	var httpClient *http.Client
+	var ewsURL string
+	var username, password string
+
+	if filled(config.ClientId) && filled(config.ClientSecret) && filled(config.TenantId) {
+		// Use OAuth
+		oauth2Config := clientcredentials.Config{
+			ClientID:     *config.ClientId,
+			ClientSecret: *config.ClientSecret,
+			TokenURL:     fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", *config.TenantId),
+			Scopes:       []string{"https://outlook.office365.com/.default"},
+		}
+		httpClient = oauth2Config.Client(context.Background())
+		ewsURL = "https://outlook.office365.com/EWS/Exchange.asmx"
+	} else if filled(config.Username) && filled(config.Password) && filled(config.EwsURL) {
+		// Use NTLM
+		httpClient = &http.Client{
+			Transport: ntlmssp.Negotiator{
+				RoundTripper: &http.Transport{},
+			},
+		}
+		ewsURL = *config.EwsURL
+		username = *config.Username
+		password = *config.Password
+	} else {
+		panic("Invalid configuration: either OAuth or NTLM credentials must be provided")
 	}
 
-	httpClient := oauth2Config.Client(context.Background())
 	return &EWSHelper{
 		Client:       httpClient,
-		EwsURL:       "https://outlook.office365.com/EWS/Exchange.asmx",
-		serviceUser:  serviceUser,
+		EwsURL:       ewsURL,
+		username:     username,
+		password:     password,
+		serviceUser:  *config.ServiceUserUPN,
 		addressCache: make(map[string]string),
 	}
 }
 
+func filled(s *string) bool {
+	return s != nil && *s != ""
+}
+
+// sendRequest sends an HTTP request with the specified XML body and returns the response body
 func (h *EWSHelper) sendRequest(xmlBody string) ([]byte, error) {
 	request, err := http.NewRequest("POST", h.EwsURL, bytes.NewBufferString(xmlBody))
 	if err != nil {
@@ -70,6 +101,10 @@ func (h *EWSHelper) sendRequest(xmlBody string) ([]byte, error) {
 	}
 
 	request.Header.Add("Content-Type", "text/xml; charset=utf-8")
+	if h.username != "" && h.password != "" {
+		request.SetBasicAuth(h.username, h.password) // Needed for NTLM
+	}
+
 	response, err := h.Client.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("sending request: %w", err)

@@ -15,14 +15,23 @@ type Configuration struct {
 	// Internal identifier for the configured API (created automatically).
 	Id *int64 `json:"id,omitempty"`
 
-	// Client ID
+	// Client ID (for Exchange Online)
 	ClientId *string `json:"clientId,omitempty"`
 
-	// Client Secret
+	// Client Secret (for Exchange Online)
 	ClientSecret *string `json:"clientSecret,omitempty"`
 
-	// Tenant ID
+	// Tenant ID (for Exchange Online)
 	TenantId *string `json:"tenantId,omitempty"`
+
+	// URL of EWS API (for Exchange Server NTLM auth)
+	EwsURL *string `json:"ewsURL,omitempty"`
+
+	// Username (for Exchange Server NTLM auth)
+	Username *string `json:"username,omitempty"`
+
+	// Password (for Exchange Server NTLM auth)
+	Password *string `json:"password,omitempty"`
 
 	// Service user email address.
 	ServiceUserUPN *string `json:"serviceUserUPN,omitempty"`

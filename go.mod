@@ -23,6 +23,7 @@ require golang.org/x/image v0.15.0 // indirect
 replace github.com/ericlagergren/decimal => github.com/ericlagergren/decimal v0.0.0-20181231230500-73749d4874d5
 
 require (
+	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/ericlagergren/decimal v0.0.0-20240411145413-00de7ca16731 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect

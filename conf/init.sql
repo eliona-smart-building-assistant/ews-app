@@ -19,9 +19,15 @@ create schema if not exists ews;
 create table if not exists ews.configuration
 (
 	id                   bigserial primary key,
+
 	client_id            text not null,
 	client_secret        text not null,
 	tenant_id            text not null,
+
+	ews_url              text not null,
+	username             text not null,
+	password             text not null,
+
 	service_user_upn     text not null,
 	room_list_upn        text not null,
 	booking_app_url      text not null,
