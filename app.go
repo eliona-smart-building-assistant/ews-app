@@ -127,7 +127,7 @@ func triggerResubscribe() {
 func collectResources(config apiserver.Configuration) error {
 	// Note: EWSHelper has an address cache and this resets it in each sync.
 	// If there is a need for optimization, create EWS helper only once per config.
-	ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret, *config.ServiceUserUPN)
+	ewsHelper := ews.NewEWSHelper(config, *config.ServiceUserUPN)
 	if config.RoomListUPN != nil && *config.RoomListUPN != "" {
 		if err := discoverNewAssets(ewsHelper, config); err != nil {
 			return err
@@ -293,7 +293,7 @@ func listenForBookings(config apiserver.Configuration) {
 func cancelInEWS(book model.Booking, config apiserver.Configuration) {
 	mu.Lock()
 	defer mu.Unlock()
-	ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret, book.OrganizerEmail)
+	ewsHelper := ews.NewEWSHelper(config, book.OrganizerEmail)
 	booking, err := conf.GetBookingByElionaID(book.ElionaID)
 	if err != nil {
 		log.Error("conf", "getting booking for Eliona ID %v: %v", book.ElionaID, err)
@@ -324,7 +324,7 @@ func bookInEWS(book model.Booking, config apiserver.Configuration) {
 
 func createAppointment(assetEmail string, book model.Booking, config apiserver.Configuration) {
 	// We want to book on behalf of the organizer, thus we need to create a helper for each booking.
-	ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret, book.OrganizerEmail)
+	ewsHelper := ews.NewEWSHelper(config, book.OrganizerEmail)
 	app := ews.Appointment{
 		Organizer: book.OrganizerEmail,
 		Subject:   "Eliona booking",
@@ -383,7 +383,6 @@ func listenApi() {
 				apiserver.NewRouter(
 					apiserver.NewConfigurationAPIController(apiservices.NewConfigurationAPIService()),
 					apiserver.NewVersionAPIController(apiservices.NewVersionAPIService()),
-					apiserver.NewCustomizationAPIController(apiservices.NewCustomizationAPIService()),
 				))))
 	log.Fatal("main", "API server: %v", err)
 }

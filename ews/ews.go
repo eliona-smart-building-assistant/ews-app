@@ -50,7 +50,7 @@ type EWSHelper struct {
 }
 
 // NewEWSHelper creates a new instance of EWSHelper with OAuth or NTLM authentication based on the provided configuration
-func NewEWSHelper(config *apiserver.Configuration) *EWSHelper {
+func NewEWSHelper(config apiserver.Configuration, impersonationUser string) *EWSHelper {
 	var httpClient *http.Client
 	var ewsURL string
 	var username, password string
@@ -84,7 +84,7 @@ func NewEWSHelper(config *apiserver.Configuration) *EWSHelper {
 		EwsURL:       ewsURL,
 		username:     username,
 		password:     password,
-		serviceUser:  *config.ServiceUserUPN,
+		serviceUser:  impersonationUser,
 		addressCache: make(map[string]string),
 	}
 }
