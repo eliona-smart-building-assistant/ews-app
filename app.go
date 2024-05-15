@@ -128,22 +128,8 @@ func collectResources(config apiserver.Configuration) error {
 	// Note: EWSHelper has an address cache and this resets it in each sync.
 	// If there is a need for optimization, create EWS helper only once per config.
 	ewsHelper := ews.NewEWSHelper(*config.ClientId, *config.TenantId, *config.ClientSecret, *config.ServiceUserUPN)
-	root, err := ewsHelper.GetAssets(config)
-	if err != nil {
-		log.Error("EWS", "getting EWS assets: %v", err)
-		return err
-	}
-
-	if cnt, err := eliona.CreateAssets(config, &root); err != nil {
-		log.Error("eliona", "creating assets in Eliona: %v", err)
-		return err
-	} else if cnt > 0 {
-		// New assets are present, need to subscribe again to include these.
-		triggerResubscribe()
-
-		// Set all assets as bookable.
-		if err := eliona.UpsertAssetData(config, root.Rooms); err != nil {
-			log.Error("eliona", "upserting asset data: %v", err)
+	if config.RoomListUPN != nil && *config.RoomListUPN != "" {
+		if err := discoverNewAssets(ewsHelper, config); err != nil {
 			return err
 		}
 	}
@@ -228,6 +214,29 @@ func collectResources(config apiserver.Configuration) error {
 		log.Error("Booking", "cancelling bookings: %v", err)
 	}
 
+	return nil
+}
+
+func discoverNewAssets(ewsHelper *ews.EWSHelper, config apiserver.Configuration) error {
+	root, err := ewsHelper.GetAssets(config)
+	if err != nil {
+		log.Error("EWS", "getting EWS assets: %v", err)
+		return err
+	}
+
+	if cnt, err := eliona.CreateAssets(config, &root); err != nil {
+		log.Error("eliona", "creating assets in Eliona: %v", err)
+		return err
+	} else if cnt > 0 {
+		// New assets are present, need to subscribe again to include these.
+		triggerResubscribe()
+
+		// Set all assets as bookable.
+		if err := eliona.UpsertAssetData(config, root.Rooms); err != nil {
+			log.Error("eliona", "upserting asset data: %v", err)
+			return err
+		}
+	}
 	return nil
 }
 
