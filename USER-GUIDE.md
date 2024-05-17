@@ -150,3 +150,7 @@ If the booking is made by a user without Exchange account (or an Ad-hoc booking)
 ## Booking Timing
 
 When creating or deleting a booking from Eliona, the booking will be visible in Outlook in a few seconds. Changes made in Outlook are synchronized to Eliona every `refreshInterval` seconds.
+
+## Recurring events
+
+For technical reasons, recurring events are not yet supported.

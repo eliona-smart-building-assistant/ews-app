@@ -258,6 +258,7 @@ type calendarItem struct {
 	Start            time.Time `xml:"Start"`
 	End              time.Time `xml:"End"`
 	Organizer        organizer `xml:"Organizer"`
+	CalendarItemType string    `xml:"CalendarItemType"`
 }
 
 type itemId struct {
@@ -300,6 +301,7 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, syncState string) (new
                     <t:FieldURI FieldURI="calendar:Start"/>
                     <t:FieldURI FieldURI="calendar:End"/>
                     <t:FieldURI FieldURI="calendar:Organizer"/>
+                    <t:FieldURI FieldURI="calendar:CalendarItemType"/>
                 </t:AdditionalProperties>
             </m:ItemShape>
             <m:SyncFolderId>
@@ -342,6 +344,11 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, syncState string) (new
 			return nil, nil, nil, syncState, fmt.Errorf("resolving distinguished name '%s': %v", item.Organizer.Mailbox.EmailAddress, err)
 		}
 
+		if change.CalendarItem.CalendarItemType == "RecurringMaster" {
+			log.Warn("EWS", "A recurring event was created for %s by %s. Recurring events are not supported!", roomEmail, organizerEmail)
+			continue
+		}
+
 		new = append(new, model.Booking{
 			ExchangeIDInResourceMailbox: item.ItemId.Id,
 			ExchangeUID:                 item.UID,
@@ -361,6 +368,11 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, syncState string) (new
 		organizerEmail, err := h.resolveDN(item.Organizer.Mailbox.EmailAddress)
 		if err != nil {
 			return nil, nil, nil, syncState, fmt.Errorf("resolving distinguished name '%s': %v", item.Organizer.Mailbox.EmailAddress, err)
+		}
+
+		if change.CalendarItem.CalendarItemType == "RecurringMaster" {
+			log.Warn("EWS", "A recurring event was updated for %s by %s. Recurring events are not supported!", roomEmail, organizerEmail)
+			continue
 		}
 
 		updated = append(updated, model.Booking{
