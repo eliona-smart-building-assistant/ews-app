@@ -55,9 +55,9 @@ create table if not exists ews.booking
 (
 	id                  bigserial primary key,
 	exchange_id         text unique, -- Always from the resource's perspective
-	exchange_uid        text unique, -- Unique identifier regardless of perspective
+	exchange_uid        text, -- Unique identifier regardless of perspective; one event might be present in multiple mailboxes (i.e. more invited rooms)
 	exchange_mailbox    text,
-	booking_id          int  unique
+	booking_id          int
 );
 
 -- Makes the new objects available for all other init steps

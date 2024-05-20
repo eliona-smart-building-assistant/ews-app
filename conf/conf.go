@@ -228,14 +228,18 @@ func GetAssetId(ctx context.Context, config apiserver.Configuration, projId stri
 	return common.Ptr(dbAsset[0].AssetID.Int32), nil
 }
 
-func GetAssetById(assetId int32) (appdb.Asset, error) {
-	asset, err := appdb.Assets(
-		appdb.AssetWhere.AssetID.EQ(null.Int32From(assetId)),
-	).OneG(context.Background())
+func GetAssetEmailsByIds(assetIds []int32) ([]string, error) {
+	assets, err := appdb.Assets(
+		appdb.AssetWhere.AssetID.IN(assetIds),
+	).AllG(context.Background())
 	if err != nil {
-		return appdb.Asset{}, fmt.Errorf("fetching asset: %v", err)
+		return []string{}, fmt.Errorf("fetching assets: %v", err)
 	}
-	return *asset, nil
+	var result []string
+	for _, a := range assets {
+		result = append(result, a.ProviderID)
+	}
+	return result, nil
 }
 
 func GetAssets() ([]appdb.Asset, error) {
@@ -308,7 +312,10 @@ func GetBookingByExchangeID(exchangeID string) (appdb.Booking, error) {
 	return *booking, nil
 }
 
-func GetBookingByElionaID(bookingID int32) (appdb.Booking, error) {
+// GetRandomBookingByElionaID - This gets one of the bookings having the
+// specified booking ID. Useful for cases adressing the Exchange UID, not the
+// Exchange ID.
+func GetRandomBookingByElionaID(bookingID int32) (appdb.Booking, error) {
 	booking, err := appdb.Bookings(
 		appdb.BookingWhere.BookingID.EQ(null.Int32From(bookingID)),
 	).OneG(context.Background())

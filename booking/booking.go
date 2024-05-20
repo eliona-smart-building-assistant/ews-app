@@ -32,33 +32,50 @@ func NewClient(baseURL string) *client {
 }
 
 func (c *client) Book(bookings []model.Booking) error {
-	for _, b := range bookings {
+	bookingsMap := groupBookingsByID(bookings)
+	for _, b := range bookingsMap {
+		randomBooking := b[0]
 		convertedBooking := bookingRequest{
-			BookingID:   b.ElionaID,
-			AssetIds:    []int{int(b.AssetID)},
-			OrganizerID: b.OrganizerEmail,
-			Start:       b.Start,
-			End:         b.End,
+			BookingID:   randomBooking.ElionaID,
+			AssetIds:    randomBooking.AssetIDs,
+			OrganizerID: randomBooking.OrganizerEmail,
+			Start:       randomBooking.Start,
+			End:         randomBooking.End,
 		}
 		responseBooking, err := c.book(convertedBooking)
 		if err != nil {
 			return err
 		}
-		if err := conf.UpsertBooking(appdb.Booking{
-			ExchangeID:      null.StringFrom(b.ExchangeIDInResourceMailbox),
-			ExchangeUID:     null.StringFrom(b.ExchangeUID),
-			ExchangeMailbox: null.StringFrom(b.OrganizerEmail),
-			BookingID:       null.Int32From(responseBooking.Id),
-		}); err != nil {
-			return fmt.Errorf("upserting booking id: %v", err)
+		for _, specificEvent := range b {
+			if err := conf.UpsertBooking(appdb.Booking{
+				ExchangeID:      null.StringFrom(specificEvent.ExchangeIDInResourceMailbox),
+				ExchangeUID:     null.StringFrom(specificEvent.ExchangeUID),
+				ExchangeMailbox: null.StringFrom(specificEvent.OrganizerEmail),
+				BookingID:       null.Int32From(responseBooking.Id),
+			}); err != nil {
+				return fmt.Errorf("upserting booking id: %v", err)
+			}
 		}
 	}
 	return nil
 }
 
+// TODO: This is weird. We need better data structures to distinguish bookings and events.
+func groupBookingsByID(bookings []model.Booking) map[int32][]model.Booking {
+	bookingMap := make(map[int32][]model.Booking)
+
+	for _, booking := range bookings {
+		// Create a copy of the booking to avoid reference issues
+		copyOfBooking := booking
+		bookingMap[booking.ElionaID] = append(bookingMap[booking.ElionaID], copyOfBooking)
+	}
+
+	return bookingMap
+}
+
 type bookingRequest struct {
 	BookingID   int32     `json:"bookingID"`
-	AssetIds    []int     `json:"assetIds"`
+	AssetIds    []int32   `json:"assetIds"`
 	OrganizerID string    `json:"organizerID"`
 	Start       time.Time `json:"start"`
 	End         time.Time `json:"end"`
@@ -227,7 +244,7 @@ func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan 
 
 			bookingsChan <- model.Booking{
 				ElionaID:       booking.ID,
-				AssetID:        booking.AssetIds[0],
+				AssetIDs:       booking.AssetIds,
 				OrganizerEmail: booking.OrganizerID,
 				Start:          booking.Start,
 				End:            booking.End,

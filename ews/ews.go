@@ -430,7 +430,7 @@ type Appointment struct {
 	Attendees []string
 }
 
-func (h *EWSHelper) CreateAppointment(appointment Appointment) (booking model.Booking, err error) {
+func (h *EWSHelper) CreateAppointment(appointment Appointment) (exchangeUID string, resourceEventIDs []string, err error) {
 	requestXML := fmt.Sprintf(`
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                   xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
@@ -472,47 +472,46 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (booking model.Bo
 
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
-		return model.Booking{}, fmt.Errorf("requesting create appointment: %w", err)
+		return "", nil, fmt.Errorf("requesting create appointment: %w", err)
 	}
 
 	// First, try to unmarshal into SOAPFault to see if there was an error.
 	var soapFault soapFault
 	if err := xml.Unmarshal(responseXML, &soapFault); err == nil && soapFault.Body.Fault.FaultCode != "" {
 		if soapFault.Body.Fault.Detail.ResponseCode == "ErrorNonExistentMailbox" {
-			return model.Booking{}, ErrNonExistentMailbox
+			return "", nil, ErrNonExistentMailbox
 		}
-		return model.Booking{}, fmt.Errorf("SOAP fault: %s - %s", soapFault.Body.Fault.Detail.ResponseCode, soapFault.Body.Fault.Detail.Message)
+		return "", nil, fmt.Errorf("SOAP fault: %s - %s", soapFault.Body.Fault.Detail.ResponseCode, soapFault.Body.Fault.Detail.Message)
 	}
 
 	var env appointmentCreated
 	if err := xml.Unmarshal(responseXML, &env); err != nil {
-		return model.Booking{}, fmt.Errorf("unmarshaling XML: %v", err)
+		return "", nil, fmt.Errorf("unmarshaling XML: %v", err)
 	}
 
 	organizerEventID := env.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.Items.CalendarItem.ItemId.ID
 
-	uid, err := h.getUIDFromItemId(appointment.Organizer, organizerEventID)
+	exchangeUID, err = h.getUIDFromItemId(appointment.Organizer, organizerEventID)
 	if err != nil {
-		return model.Booking{}, fmt.Errorf("getting UID from ItemID: %v", err)
+		return "", nil, fmt.Errorf("getting UID from ItemID: %v", err)
 	}
-	booking.ExchangeUID = uid
 
 	// Let's give the server some time to process the invitation. Sometimes it's
 	// instant, sometimes 2 seconds aren't enough. This should be long enough
 	// time.
 	time.Sleep(15 * time.Second)
-
-	resourceEventID, _, err := h.findEventUIDInMailbox(appointment.Location, uid)
-	if errors.Is(err, errNotFound) {
-		// The resource has probably declined the invitation.
-		return booking, ErrDeclined
-	} else if err != nil {
-		return booking, fmt.Errorf("finding resource event ID: %v", err)
+	for _, attendee := range appointment.Attendees {
+		resourceEventID, _, err := h.findEventUIDInMailbox(attendee, exchangeUID)
+		if errors.Is(err, errNotFound) {
+			// The resource has probably declined the invitation.
+			return exchangeUID, nil, ErrDeclined
+		} else if err != nil {
+			return exchangeUID, nil, fmt.Errorf("finding resource event ID: %v", err)
+		}
+		resourceEventIDs = append(resourceEventIDs, resourceEventID)
 	}
 
-	booking.ExchangeIDInResourceMailbox = resourceEventID
-
-	return booking, nil
+	return exchangeUID, resourceEventIDs, nil
 }
 
 func formatAttendees(attendees []string) string {

@@ -167,7 +167,7 @@ func collectResources(config apiserver.Configuration) error {
 			return err
 		}
 		for i := range updated {
-			updated[i].AssetID = ast.AssetID.Int32
+			updated[i].AssetIDs = []int32{ast.AssetID.Int32}
 			a := updated[i]
 			a, err := assignElionaID(a)
 			if err != nil {
@@ -176,7 +176,7 @@ func collectResources(config apiserver.Configuration) error {
 			toBook = append(toBook, a)
 		}
 		for i := range new {
-			new[i].AssetID = ast.AssetID.Int32
+			new[i].AssetIDs = []int32{ast.AssetID.Int32}
 			a := new[i]
 			a, err := assignElionaID(a)
 			if err != nil {
@@ -185,7 +185,7 @@ func collectResources(config apiserver.Configuration) error {
 			toBook = append(toBook, a)
 		}
 		for i := range cancelled {
-			cancelled[i].AssetID = ast.AssetID.Int32
+			cancelled[i].AssetIDs = []int32{ast.AssetID.Int32}
 			a := cancelled[i]
 			booking, err := conf.GetBookingByExchangeID(a.ExchangeIDInResourceMailbox)
 			if err != nil && !errors.Is(err, conf.ErrNotFound) {
@@ -294,7 +294,7 @@ func cancelInEWS(book model.Booking, config apiserver.Configuration) {
 	mu.Lock()
 	defer mu.Unlock()
 	ewsHelper := ews.NewEWSHelper(config, book.OrganizerEmail)
-	booking, err := conf.GetBookingByElionaID(book.ElionaID)
+	booking, err := conf.GetRandomBookingByElionaID(book.ElionaID)
 	if err != nil {
 		log.Error("conf", "getting booking for Eliona ID %v: %v", book.ElionaID, err)
 		return
@@ -302,7 +302,6 @@ func cancelInEWS(book model.Booking, config apiserver.Configuration) {
 		log.Error("db", "cancelling booking: booking %v does not have exchangeID, UID or Mailbox", booking.ID)
 		return
 	}
-	book.ExchangeIDInResourceMailbox = booking.ExchangeID.String
 	book.ExchangeUID = booking.ExchangeUID.String
 	book.OrganizerEmail = booking.ExchangeMailbox.String
 	if err := ewsHelper.CancelEvent(book); err != nil {
@@ -314,15 +313,15 @@ func cancelInEWS(book model.Booking, config apiserver.Configuration) {
 func bookInEWS(book model.Booking, config apiserver.Configuration) {
 	mu.Lock()
 	defer mu.Unlock()
-	asset, err := conf.GetAssetById(book.AssetID)
+	assets, err := conf.GetAssetEmailsByIds(book.AssetIDs)
 	if err != nil {
-		log.Error("conf", "getting asset ID %v: %v", book.AssetID, err)
+		log.Error("conf", "getting asset IDs %v: %v", book.AssetIDs, err)
 		return
 	}
-	createAppointment(asset.ProviderID, book, config)
+	createAppointment(assets, book, config)
 }
 
-func createAppointment(assetEmail string, book model.Booking, config apiserver.Configuration) {
+func createAppointment(assetsEmails []string, book model.Booking, config apiserver.Configuration) {
 	// We want to book on behalf of the organizer, thus we need to create a helper for each booking.
 	ewsHelper := ews.NewEWSHelper(config, book.OrganizerEmail)
 	app := ews.Appointment{
@@ -330,12 +329,13 @@ func createAppointment(assetEmail string, book model.Booking, config apiserver.C
 		Subject:   "Eliona booking",
 		Start:     book.Start,
 		End:       book.End,
-		Location:  assetEmail,
-		Attendees: []string{assetEmail},
+		Location:  assetsEmails[0],
+		Attendees: assetsEmails,
 	}
-	a, err := ewsHelper.CreateAppointment(app)
-	book.ExchangeUID = a.ExchangeUID
-	book.ExchangeIDInResourceMailbox = a.ExchangeIDInResourceMailbox
+	exchangeUID, resourceEventIDs, err := ewsHelper.CreateAppointment(app)
+	book.ExchangeUID = exchangeUID
+	// TODO: Refactor this into booking/event
+	// Here we are working with one booking containing multiple resources
 	if errors.Is(err, ews.ErrDeclined) {
 		bc := booking.NewClient(*config.BookingAppURL)
 		if err := ewsHelper.CancelEvent(book); err != nil {
@@ -350,7 +350,7 @@ func createAppointment(assetEmail string, book model.Booking, config apiserver.C
 	} else if errors.Is(err, ews.ErrNonExistentMailbox) && book.OrganizerEmail != *config.ServiceUserUPN {
 		log.Debug("ews", "booking for %v will be booked by a service user", book.OrganizerEmail)
 		book.OrganizerEmail = *config.ServiceUserUPN
-		createAppointment(assetEmail, book, config)
+		createAppointment(assetsEmails, book, config)
 		return
 	} else if err != nil {
 		log.Error("ews", "creating appointment %v: %v", book.ElionaID, err)
@@ -363,15 +363,19 @@ func createAppointment(assetEmail string, book model.Booking, config apiserver.C
 		return
 	}
 	log.Debug("ews", "created a booking for %v", book.OrganizerEmail)
-	b := appdb.Booking{
-		ExchangeID:      null.StringFrom(book.ExchangeIDInResourceMailbox),
-		ExchangeUID:     null.StringFrom(book.ExchangeUID),
-		ExchangeMailbox: null.StringFrom(book.OrganizerEmail),
-		BookingID:       null.Int32From(book.ElionaID),
-	}
-	if err := conf.UpsertBooking(b); err != nil {
-		log.Error("conf", "upserting newly created booking: %v", err)
-		return
+
+	for _, resourceEventID := range resourceEventIDs {
+		// Here we are working with one booking per resource
+		b := appdb.Booking{
+			ExchangeID:      null.StringFrom(resourceEventID),
+			ExchangeUID:     null.StringFrom(book.ExchangeUID),
+			ExchangeMailbox: null.StringFrom(book.OrganizerEmail),
+			BookingID:       null.Int32From(book.ElionaID),
+		}
+		if err := conf.UpsertBooking(b); err != nil {
+			log.Error("conf", "upserting newly created booking: %v", err)
+			return
+		}
 	}
 }
 

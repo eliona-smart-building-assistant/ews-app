@@ -31,7 +31,7 @@ type Booking struct {
 	ExchangeIDInResourceMailbox string
 	ExchangeUID                 string
 	ElionaID                    int32
-	AssetID                     int32
+	AssetIDs                    []int32
 	Subject                     string
 	OrganizerEmail              string
 	Start                       time.Time
