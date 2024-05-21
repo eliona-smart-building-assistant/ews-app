@@ -95,16 +95,40 @@ func DeleteConfig(ctx context.Context, configID int64) error {
 }
 
 func dbConfigFromApiConfig(ctx context.Context, apiConfig apiserver.Configuration) (dbConfig appdb.Configuration, err error) {
-	dbConfig.ClientID = *apiConfig.ClientId
-	dbConfig.ClientSecret = *apiConfig.ClientSecret
-	dbConfig.TenantID = *apiConfig.TenantId
+	if !((apiConfig.ClientId != nil && apiConfig.ClientSecret != nil && apiConfig.TenantId != nil) || (apiConfig.EwsURL != nil && apiConfig.Username != nil && apiConfig.Password != nil)) {
+		return appdb.Configuration{}, fmt.Errorf("configure either OAuth or NTLM credentials")
+	}
+	if apiConfig.ClientId != nil {
+		dbConfig.ClientID = *apiConfig.ClientId
+	}
+	if apiConfig.ClientSecret != nil {
+		dbConfig.ClientSecret = *apiConfig.ClientSecret
+	}
+	if apiConfig.TenantId != nil {
+		dbConfig.TenantID = *apiConfig.TenantId
+	}
 
-	dbConfig.EwsURL = *apiConfig.EwsURL
-	dbConfig.Username = *apiConfig.Username
-	dbConfig.Password = *apiConfig.Password
+	if apiConfig.EwsURL != nil {
+		dbConfig.EwsURL = *apiConfig.EwsURL
+	}
+	if apiConfig.Username != nil {
+		dbConfig.Username = *apiConfig.Username
+	}
+	if apiConfig.Password != nil {
+		dbConfig.Password = *apiConfig.Password
+	}
 
+	if apiConfig.ServiceUserUPN == nil {
+		return appdb.Configuration{}, fmt.Errorf("config is missing ServiceUserUPN")
+	}
 	dbConfig.ServiceUserUpn = *apiConfig.ServiceUserUPN
+	if apiConfig.RoomListUPN == nil {
+		return appdb.Configuration{}, fmt.Errorf("config is missing RoomListUPN")
+	}
 	dbConfig.RoomListUpn = *apiConfig.RoomListUPN
+	if apiConfig.BookingAppURL == nil {
+		return appdb.Configuration{}, fmt.Errorf("config is missing BookingAppURL")
+	}
 	dbConfig.BookingAppURL = *apiConfig.BookingAppURL
 
 	dbConfig.ID = null.Int64FromPtr(apiConfig.Id).Int64
