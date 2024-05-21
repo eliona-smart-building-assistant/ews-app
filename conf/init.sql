@@ -51,13 +51,21 @@ create table if not exists ews.asset
 	sync_state       text      not null
 );
 
-create table if not exists ews.booking
+create table if not exists ews.unified_booking
+-- Booking as an event in organizer's calendar.
+(
+	id                         bigserial primary key,
+	exchange_uid               text unique, -- Unique identifier regardless of perspective; one event might be present in multiple mailboxes (i.e. more invited rooms)
+	exchange_organizer_mailbox text,
+	booking_id                 int unique
+);
+
+create table if not exists ews.room_booking
+-- Booking of a specific resource within unified booking
 (
 	id                  bigserial primary key,
-	exchange_id         text unique, -- Always from the resource's perspective
-	exchange_uid        text, -- Unique identifier regardless of perspective; one event might be present in multiple mailboxes (i.e. more invited rooms)
-	exchange_mailbox    text,
-	booking_id          int
+	unified_booking_id  bigserial not null references ews.unified_booking(id) ON DELETE CASCADE,
+	exchange_id         text unique -- Always from the resource's perspective
 );
 
 -- Makes the new objects available for all other init steps

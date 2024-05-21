@@ -31,46 +31,36 @@ func NewClient(baseURL string) *client {
 	}
 }
 
-func (c *client) Book(bookings []model.Booking) error {
-	bookingsMap := groupBookingsByID(bookings)
-	for _, b := range bookingsMap {
-		randomBooking := b[0]
+func (c *client) Book(bookings map[string]model.UnifiedBooking) error {
+	for _, booking := range bookings {
 		convertedBooking := bookingRequest{
-			BookingID:   randomBooking.ElionaID,
-			AssetIds:    randomBooking.AssetIDs,
-			OrganizerID: randomBooking.OrganizerEmail,
-			Start:       randomBooking.Start,
-			End:         randomBooking.End,
+			BookingID:   booking.ElionaID,
+			AssetIds:    booking.GetAssetIDs(),
+			OrganizerID: booking.OrganizerEmail,
+			Start:       booking.Start,
+			End:         booking.End,
 		}
 		responseBooking, err := c.book(convertedBooking)
 		if err != nil {
 			return err
 		}
-		for _, specificEvent := range b {
-			if err := conf.UpsertBooking(appdb.Booking{
-				ExchangeID:      null.StringFrom(specificEvent.ExchangeIDInResourceMailbox),
-				ExchangeUID:     null.StringFrom(specificEvent.ExchangeUID),
-				ExchangeMailbox: null.StringFrom(specificEvent.OrganizerEmail),
-				BookingID:       null.Int32From(responseBooking.Id),
-			}); err != nil {
-				return fmt.Errorf("upserting booking id: %v", err)
-			}
+
+		dbUB := appdb.UnifiedBooking{
+			ExchangeUID:              null.StringFrom(booking.ExchangeUID),
+			ExchangeOrganizerMailbox: null.StringFrom(booking.OrganizerEmail),
+			BookingID:                null.Int32From(responseBooking.Id),
+		}
+		var dbRoomBookings []appdb.RoomBooking
+		for _, specificEvent := range booking.RoomBookings {
+			dbRoomBookings = append(dbRoomBookings, appdb.RoomBooking{
+				ExchangeID: null.StringFrom(specificEvent.ExchangeIDInResourceMailbox),
+			})
+		}
+		if err := conf.UpsertBooking(dbUB, dbRoomBookings); err != nil {
+			return fmt.Errorf("upserting booking id %v: %v", dbUB.BookingID, err)
 		}
 	}
 	return nil
-}
-
-// TODO: This is weird. We need better data structures to distinguish bookings and events.
-func groupBookingsByID(bookings []model.Booking) map[int32][]model.Booking {
-	bookingMap := make(map[int32][]model.Booking)
-
-	for _, booking := range bookings {
-		// Create a copy of the booking to avoid reference issues
-		copyOfBooking := booking
-		bookingMap[booking.ElionaID] = append(bookingMap[booking.ElionaID], copyOfBooking)
-	}
-
-	return bookingMap
 }
 
 type bookingRequest struct {
@@ -121,7 +111,7 @@ func (c *client) book(bookings bookingRequest) (bookingResponse, error) {
 	return respBody, nil
 }
 
-func (c *client) CancelSlice(bookings []model.Booking) error {
+func (c *client) CancelSlice(bookings []model.UnifiedBooking) error {
 	for _, b := range bookings {
 		err := c.Cancel(b.ElionaID, "cancelled")
 		if err != nil {
@@ -192,13 +182,13 @@ type Booking struct {
 	Cancelled   bool      `json:"cancelled"`
 }
 
-func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan model.Booking, error) {
+func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan model.UnifiedBooking, error) {
 	conn, err := c.subscribeBookings(assetIDs)
 	if err != nil {
 		return nil, err
 	}
 	log.Debug("eliona-booking", "Subscribed")
-	bookingsChan := make(chan model.Booking)
+	bookingsChan := make(chan model.UnifiedBooking)
 
 	go func() {
 		defer close(bookingsChan)
@@ -237,14 +227,15 @@ func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan 
 				continue // Skip this message and continue listening
 			}
 
-			if len(booking.AssetIds) != 1 {
-				log.Error("eliona-booking", "The request contains %v != 1 assetIDs, which is currently unsupported.", len(booking.AssetIds))
-				continue
+			roomBookings := make([]model.RoomBooking, len(booking.AssetIds))
+			for i, assetID := range booking.AssetIds {
+				roomBookings[i] = model.RoomBooking{
+					AssetID: assetID,
+				}
 			}
-
-			bookingsChan <- model.Booking{
+			bookingsChan <- model.UnifiedBooking{
 				ElionaID:       booking.ID,
-				AssetIDs:       booking.AssetIds,
+				RoomBookings:   roomBookings,
 				OrganizerEmail: booking.OrganizerID,
 				Start:          booking.Start,
 				End:            booking.End,

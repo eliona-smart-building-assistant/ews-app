@@ -4,11 +4,13 @@
 package appdb
 
 var TableNames = struct {
-	Asset         string
-	Booking       string
-	Configuration string
+	Asset          string
+	Configuration  string
+	RoomBooking    string
+	UnifiedBooking string
 }{
-	Asset:         "asset",
-	Booking:       "booking",
-	Configuration: "configuration",
+	Asset:          "asset",
+	Configuration:  "configuration",
+	RoomBooking:    "room_booking",
+	UnifiedBooking: "unified_booking",
 }

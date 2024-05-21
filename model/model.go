@@ -27,16 +27,27 @@ import (
 	"github.com/eliona-smart-building-assistant/go-utils/common"
 )
 
-type Booking struct {
+type UnifiedBooking struct {
+	ExchangeUID    string
+	ElionaID       int32
+	RoomBookings   []RoomBooking
+	OrganizerEmail string
+	Start          time.Time
+	End            time.Time
+	Cancelled      bool
+}
+
+type RoomBooking struct {
+	AssetID                     int32
 	ExchangeIDInResourceMailbox string
-	ExchangeUID                 string
-	ElionaID                    int32
-	AssetIDs                    []int32
-	Subject                     string
-	OrganizerEmail              string
-	Start                       time.Time
-	End                         time.Time
-	Cancelled                   bool
+}
+
+func (ub UnifiedBooking) GetAssetIDs() []int32 {
+	assetIDs := make([]int32, len(ub.RoomBookings))
+	for i, rb := range ub.RoomBookings {
+		assetIDs[i] = rb.AssetID
+	}
+	return assetIDs
 }
 
 // Assets

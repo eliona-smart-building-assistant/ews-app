@@ -29,6 +29,7 @@ import (
 	"github.com/eliona-smart-building-assistant/go-utils/log"
 	"github.com/volatiletech/null/v8"
 	"github.com/volatiletech/sqlboiler/v4/boil"
+	"github.com/volatiletech/sqlboiler/v4/queries/qm"
 )
 
 var ErrBadRequest = errors.New("bad request")
@@ -324,38 +325,82 @@ func PersistSyncState(assetID int64, syncState string) error {
 	return err
 }
 
-func GetBookingByExchangeID(exchangeID string) (appdb.Booking, error) {
-	booking, err := appdb.Bookings(
-		appdb.BookingWhere.ExchangeID.EQ(null.StringFrom(exchangeID)),
+func GetUnifiedBookingByExchangeID(exchangeID string) (appdb.UnifiedBooking, error) {
+	booking, err := appdb.UnifiedBookings(
+		qm.InnerJoin("ews.room_booking rb on rb.unified_booking_id = unified_booking.id"),
+		qm.Where("rb.exchange_id = ?", exchangeID),
 	).OneG(context.Background())
 	if errors.Is(err, sql.ErrNoRows) {
-		return appdb.Booking{}, ErrNotFound
+		return appdb.UnifiedBooking{}, ErrNotFound
 	} else if err != nil {
-		return appdb.Booking{}, fmt.Errorf("fetching booking from database: %v", err)
+		return appdb.UnifiedBooking{}, fmt.Errorf("fetching booking from database: %v", err)
 	}
 	return *booking, nil
 }
 
-// GetRandomBookingByElionaID - This gets one of the bookings having the
-// specified booking ID. Useful for cases adressing the Exchange UID, not the
-// Exchange ID.
-func GetRandomBookingByElionaID(bookingID int32) (appdb.Booking, error) {
-	booking, err := appdb.Bookings(
-		appdb.BookingWhere.BookingID.EQ(null.Int32From(bookingID)),
+func GetUnifiedBookingByExchangeUID(exchangeUID string) (appdb.UnifiedBooking, error) {
+	booking, err := appdb.UnifiedBookings(
+		appdb.UnifiedBookingWhere.ExchangeUID.EQ(null.StringFrom(exchangeUID)),
 	).OneG(context.Background())
 	if errors.Is(err, sql.ErrNoRows) {
-		return appdb.Booking{}, ErrNotFound
+		return appdb.UnifiedBooking{}, ErrNotFound
 	} else if err != nil {
-		return appdb.Booking{}, fmt.Errorf("fetching booking from database: %v", err)
+		return appdb.UnifiedBooking{}, fmt.Errorf("fetching booking from database: %v", err)
 	}
 	return *booking, nil
 }
 
-func UpsertBooking(booking appdb.Booking) error {
-	return booking.UpsertG(
-		context.Background(), true,
-		[]string{appdb.BookingColumns.ExchangeID},
-		boil.Whitelist(appdb.BookingColumns.BookingID),
+func GetUnifiedBookingByElionaID(bookingID int32) (appdb.UnifiedBooking, error) {
+	booking, err := appdb.UnifiedBookings(
+		appdb.UnifiedBookingWhere.BookingID.EQ(null.Int32From(bookingID)),
+	).OneG(context.Background())
+	if errors.Is(err, sql.ErrNoRows) {
+		return appdb.UnifiedBooking{}, ErrNotFound
+	} else if err != nil {
+		return appdb.UnifiedBooking{}, fmt.Errorf("fetching booking from database: %v", err)
+	}
+	return *booking, nil
+}
+
+func UpsertBooking(unifiedBooking appdb.UnifiedBooking, roomBookings []appdb.RoomBooking) error {
+	ctx := context.Background()
+	tx, err := boil.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("creating transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	if err := unifiedBooking.UpsertG(
+		ctx, true,
+		[]string{appdb.UnifiedBookingColumns.ExchangeUID},
+		boil.Whitelist(appdb.UnifiedBookingColumns.BookingID),
 		boil.Infer(),
-	)
+	); err != nil {
+		return fmt.Errorf("upserting unified booking: %v", err)
+	}
+
+	storedUnifiedBooking, err := appdb.UnifiedBookings(
+		appdb.UnifiedBookingWhere.ExchangeUID.EQ(unifiedBooking.ExchangeUID),
+	).One(ctx, tx)
+	if err != nil {
+		return fmt.Errorf("fetching unified booking ID: %v", err)
+	}
+
+	for _, roomBooking := range roomBookings {
+		roomBooking.UnifiedBookingID = storedUnifiedBooking.ID
+		// Just a hacky way to do "ON CONFLICT DO NOTHING"
+		if err := roomBooking.UpsertG(
+			ctx, true,
+			[]string{appdb.RoomBookingColumns.ExchangeID},
+			boil.Whitelist(appdb.RoomBookingColumns.ExchangeID),
+			boil.Infer()); err != nil {
+			return fmt.Errorf("upserting room booking: %v", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing transaction: %v", err)
+	}
+
+	return nil
 }

@@ -275,7 +275,7 @@ type mailbox struct {
 	EmailAddress string `xml:"EmailAddress"` // This might be either email address, or Legacy DN.
 }
 
-func (h *EWSHelper) GetRoomAppointments(roomEmail string, syncState string) (new []model.Booking, updated []model.Booking, cancelled []model.Booking, newSyncState string, err error) {
+func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncState string) (new []model.UnifiedBooking, updated []model.UnifiedBooking, cancelled []string, newSyncState string, err error) {
 	// Every synchronization, we will get a list of Create, Update and Delete events (and some cruft
 	// amongst it). When there is no SyncState, we will get only Create events for all events
 	// present on server. If that happens to be a lot of events, these will be created over time by
@@ -349,14 +349,16 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, syncState string) (new
 			continue
 		}
 
-		new = append(new, model.Booking{
-			ExchangeIDInResourceMailbox: item.ItemId.Id,
-			ExchangeUID:                 item.UID,
-			Subject:                     item.Subject,
-			OrganizerEmail:              organizerEmail,
-			Start:                       item.Start,
-			End:                         item.End,
-			Cancelled:                   false,
+		new = append(new, model.UnifiedBooking{
+			ExchangeUID:    item.UID,
+			OrganizerEmail: organizerEmail,
+			Start:          item.Start,
+			End:            item.End,
+			Cancelled:      false,
+			RoomBookings: []model.RoomBooking{{
+				ExchangeIDInResourceMailbox: item.ItemId.Id,
+				AssetID:                     assetID,
+			}},
 		})
 	}
 	for _, change := range changes.Update {
@@ -375,21 +377,20 @@ func (h *EWSHelper) GetRoomAppointments(roomEmail string, syncState string) (new
 			continue
 		}
 
-		updated = append(updated, model.Booking{
-			ExchangeIDInResourceMailbox: item.ItemId.Id,
-			ExchangeUID:                 item.UID,
-			Subject:                     item.Subject,
-			OrganizerEmail:              organizerEmail,
-			Start:                       item.Start,
-			End:                         item.End,
-			Cancelled:                   false,
+		updated = append(updated, model.UnifiedBooking{
+			ExchangeUID:    item.UID,
+			OrganizerEmail: organizerEmail,
+			Start:          item.Start,
+			End:            item.End,
+			Cancelled:      false,
+			RoomBookings: []model.RoomBooking{{
+				ExchangeIDInResourceMailbox: item.ItemId.Id,
+				AssetID:                     assetID,
+			}},
 		})
 	}
 	for _, change := range changes.Delete {
-		cancelled = append(cancelled, model.Booking{
-			ExchangeIDInResourceMailbox: change.ItemId.Id,
-			Cancelled:                   true,
-		})
+		cancelled = append(cancelled, change.ItemId.Id)
 	}
 
 	newSyncState = env.Body.SyncFolderItemsResponse.ResponseMessages.SyncFolderItemsResponseMessage.SyncState
@@ -549,7 +550,7 @@ type appointmentCreated struct {
 	} `xml:"Body"`
 }
 
-func (h *EWSHelper) CancelEvent(event model.Booking) error {
+func (h *EWSHelper) CancelEvent(event model.UnifiedBooking) error {
 	// Find the organizer's eventId and changeKey using the UID
 	eventID, changeKey, err := h.findEventUIDInMailbox(event.OrganizerEmail, event.ExchangeUID)
 	if err != nil {
