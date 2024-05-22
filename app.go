@@ -335,6 +335,10 @@ func bookInEWS(book model.UnifiedBooking, config apiserver.Configuration) {
 }
 
 func createAppointment(assetsEmails []string, book model.UnifiedBooking, config apiserver.Configuration) {
+	if book.OrganizerEmail == "" {
+		// Otherwise we get a 422 error
+		book.OrganizerEmail = *config.ServiceUserUPN
+	}
 	// We want to book on behalf of the organizer, thus we need to create a helper for each booking.
 	ewsHelper := ews.NewEWSHelper(config, book.OrganizerEmail)
 	app := ews.Appointment{
