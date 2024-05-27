@@ -13,13 +13,23 @@ CREATE TABLE IF NOT EXISTS ews.room_booking
     exchange_id         text UNIQUE
 );
 
-INSERT INTO ews.unified_booking (exchange_uid, exchange_organizer_mailbox, booking_id)
-SELECT DISTINCT exchange_uid, exchange_mailbox, booking_id
-FROM ews.booking;
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'ews' AND tablename = 'booking') THEN
 
-INSERT INTO ews.room_booking (unified_booking_id, exchange_id)
-SELECT ub.id, b.exchange_id
-FROM ews.booking b
-JOIN ews.unified_booking ub ON b.exchange_uid = ub.exchange_uid;
+        -- Insert data into ews.unified_booking
+        INSERT INTO ews.unified_booking (exchange_uid, exchange_organizer_mailbox, booking_id)
+        SELECT DISTINCT exchange_uid, exchange_mailbox, booking_id
+        FROM ews.booking;
 
-DROP TABLE IF EXISTS ews.booking;
+        -- Insert data into ews.room_booking
+        INSERT INTO ews.room_booking (unified_booking_id, exchange_id)
+        SELECT ub.id, b.exchange_id
+        FROM ews.booking b
+        JOIN ews.unified_booking ub ON b.exchange_uid = ub.exchange_uid;
+
+        -- Drop the old ews.booking table
+        DROP TABLE IF EXISTS ews.booking;
+
+    END IF;
+END $$;
