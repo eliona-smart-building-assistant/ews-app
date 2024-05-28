@@ -40,6 +40,7 @@ type UnifiedBooking struct {
 type RoomBooking struct {
 	AssetID                     int32
 	ExchangeIDInResourceMailbox string
+	UnifiedBooking              *UnifiedBooking
 }
 
 func (ub UnifiedBooking) GetAssetIDs() []int32 {

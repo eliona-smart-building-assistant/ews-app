@@ -31,6 +31,36 @@ func NewClient(baseURL string) *client {
 	}
 }
 
+func (c *client) get(elionaID int32) (bookingResponse, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/bookings/%v", c.BaseURL, elionaID), nil)
+	if err != nil {
+		return bookingResponse{}, err
+	}
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return bookingResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		log.Error("booking", "booking %v not found while cancelling", elionaID)
+	} else if resp.StatusCode != http.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return bookingResponse{}, fmt.Errorf("error %v returned: failed to read response body: %v", resp.StatusCode, err)
+		}
+		return bookingResponse{}, fmt.Errorf("unexpected status code %d: %v", resp.StatusCode, string(bodyBytes))
+	}
+
+	var respBody bookingResponse
+	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+		return bookingResponse{}, fmt.Errorf("error parsing response body: %v", err)
+	}
+
+	return respBody, nil
+}
+
 func (c *client) Book(bookings map[string]model.UnifiedBooking) error {
 	for _, booking := range bookings {
 		convertedBooking := bookingRequest{
@@ -97,7 +127,6 @@ func (c *client) book(bookings bookingRequest) (bookingResponse, error) {
 	if resp.StatusCode >= 300 {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			// Handle error, possibly return an error indicating the body could not be read
 			return bookingResponse{}, fmt.Errorf("error %v returned: failed to read response body: %v", resp.StatusCode, err)
 		}
 		return bookingResponse{}, fmt.Errorf("unexpected status code %d: %v", resp.StatusCode, string(bodyBytes))
@@ -111,14 +140,45 @@ func (c *client) book(bookings bookingRequest) (bookingResponse, error) {
 	return respBody, nil
 }
 
-func (c *client) CancelSlice(bookings []model.UnifiedBooking) error {
+func (c *client) CancelSlice(bookings []model.RoomBooking) error {
 	for _, b := range bookings {
-		err := c.Cancel(b.ElionaID, "cancelled")
+		if b.UnifiedBooking == nil {
+			return fmt.Errorf("unifiedBooking is nil")
+		}
+		elionaBooking, err := c.get(b.UnifiedBooking.ElionaID)
 		if err != nil {
-			return err
+			return fmt.Errorf("getting eliona booking for id %v: %v", b.UnifiedBooking.ElionaID, err)
+		}
+		elionaBooking.AssetIds = removeElement(elionaBooking.AssetIds, b.AssetID)
+		if len(elionaBooking.AssetIds) != 0 {
+			// We don't want to cancel the whole event in Eliona when just part of the rooms are removed from the event.
+			_, err := c.book(bookingRequest{
+				BookingID:   elionaBooking.Id,
+				Start:       elionaBooking.Start,
+				End:         elionaBooking.End,
+				AssetIds:    elionaBooking.AssetIds,
+				OrganizerID: elionaBooking.OrganizerID,
+			})
+			if err != nil {
+				return fmt.Errorf("updating booking %v: %v", elionaBooking.Id, err)
+			}
+		} else {
+			err := c.Cancel(b.UnifiedBooking.ElionaID, "cancelled")
+			if err != nil {
+				return fmt.Errorf("cancelling booking %v: %v", elionaBooking.Id, err)
+			}
 		}
 	}
 	return nil
+}
+
+func removeElement(slice []int32, element int32) []int32 {
+	for i, v := range slice {
+		if v == element {
+			return append(slice[:i], slice[i+1:]...)
+		}
+	}
+	return slice
 }
 
 func (c *client) Cancel(elionaID int32, reason string) error {

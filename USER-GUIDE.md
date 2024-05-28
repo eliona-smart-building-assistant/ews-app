@@ -157,4 +157,4 @@ For technical reasons, recurring events are not yet supported.
 
 ## Booking multiple assets
 
-While booking frontend does not allow booking multiple assets at once, Outlook allows it. The app synchronizes the multi-booking into Eliona and the event can be modified or cancelled. Currently there is one limitation - removing one of the invited assets removes the whole booking from Eliona, though, so should be avoided.
+While booking frontend does not allow booking multiple assets at once, Outlook allows it. The app synchronizes the multi-booking into Eliona and the event can be modified or cancelled.

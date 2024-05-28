@@ -144,7 +144,7 @@ func collectResources(config apiserver.Configuration) error {
 		return err
 	}
 	toBook := make(map[string]model.UnifiedBooking)
-	var cancelledBookings []model.UnifiedBooking
+	var cancelledBookings []model.RoomBooking
 
 	for _, ast := range assets {
 		if !ast.AssetID.Valid {
@@ -197,18 +197,23 @@ func collectResources(config apiserver.Configuration) error {
 			}
 		}
 		for _, cancelledExchangeID := range cancelled {
-			dbBooking, err := conf.GetUnifiedBookingByExchangeID(cancelledExchangeID)
+			dbUnifiedBooking, err := conf.GetUnifiedBookingByExchangeID(cancelledExchangeID)
 			if err != nil && !errors.Is(err, conf.ErrNotFound) {
 				log.Error("conf", "getting booking for exchange ID %s: %v", cancelledExchangeID, err)
 				return err
-			} else if errors.Is(err, conf.ErrNotFound) || !dbBooking.BookingID.Valid {
+			} else if errors.Is(err, conf.ErrNotFound) || !dbUnifiedBooking.BookingID.Valid {
 				// Does not matter, cancelled anyways
 				continue
 			}
 
-			cancelledBookings = append(cancelledBookings, model.UnifiedBooking{
-				ElionaID:  dbBooking.BookingID.Int32,
+			unifiedBooking := model.UnifiedBooking{
+				ElionaID:  dbUnifiedBooking.BookingID.Int32,
 				Cancelled: true,
+			}
+
+			cancelledBookings = append(cancelledBookings, model.RoomBooking{
+				AssetID:        ast.AssetID.Int32,
+				UnifiedBooking: &unifiedBooking,
 			})
 		}
 		if err := conf.PersistSyncState(ast.ID, newSyncState); err != nil {
