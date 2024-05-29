@@ -21,7 +21,7 @@ info:
   description: API to access and configure the Exchange app
 externalDocs:
   description: Find out more about the Exchange app
-  url: https://github.com/eliona-smart-building-assistant/ews-app
+  url: https://doc.eliona.io/collection/v/eliona-english/eliona-apps/apps/exchange-app
 servers:
   - url: http://ews/v1
 
