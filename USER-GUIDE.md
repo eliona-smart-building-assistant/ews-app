@@ -8,19 +8,21 @@ Create a room list in Exchange, have these rooms available as bookable assets in
 
 ## Configuring Exchange Web Services (EWS)
 
+Follow these steps for Exchange Online and hybrid installations having user emails stored in Exchange online. *For Exchange server local installation or hybrid configuration with local-first accounts, skip this chapter and just obtain NTLM credentials and EWS API URL*
+
 > Please note that EWS for Exchange Online will be deprected on October 1, 2026. This does not affect local exchange servers and hybrid configurations. More details on the retirement can be found on the [Exchange Team Blog](https://techcommunity.microsoft.com/t5/exchange-team-blog/retirement-of-exchange-web-services-in-exchange-online/ba-p/3924440)
 
-## Registering the Application in Microsoft Entra
+### Registering the Application in Microsoft Entra
 
 To configure EWS with Exchange app, follow the steps below to register it in Microsoft Entra.
 
-### 1. Register the Application
+#### 1. Register the Application
 
 Navigate to **Entra** and select **App registrations**, then choose **Register app**. You will need to enter the application details.
 
-### 2. Configuring Permissions
+#### 2. Configuring Permissions
 
-#### Application Authentication (Impersonation)
+##### Application Authentication (Impersonation)
 
 For application-level authentication that supports impersonation:
 
@@ -43,7 +45,7 @@ Here is an example of the required configuration in the application's manifest:
 ]
 ```
 
-### 3. Generating Secrets for Authentication
+#### 3. Generating Secrets for Authentication
 
 For the application to authenticate:
 
@@ -51,14 +53,14 @@ For the application to authenticate:
 - Select **New client secret**.
 - Store the generated secret securely as it will be needed for the application to authenticate with Microsoft services.
 
-### Configuring Impersonation via PowerShell
+#### Configuring Impersonation via PowerShell
 
 To configure impersonation and other settings that are not available through the Entra portal, you must use PowerShell. Note that an online PowerShell console is unavailable without a subscription. Local PowerShell installations on Windows, Linux, or macOS can manage these configurations:
 
 - Ensure you have the necessary PowerShell modules installed for managing Exchange.
 - Use scripts to configure impersonation rights or other Exchange-specific settings.
 
-### PowerShell Scripts for Configuring Impersonation
+#### PowerShell Scripts for Configuring Impersonation
 
 1. **Connect to Exchange Online PowerShell**:
 
@@ -82,7 +84,7 @@ Get-ManagementRoleAssignment –RoleAssignee serviceAccount –Role ApplicationI
 
 Replace `serviceAccount` with the name of your service account or user that will perform impersonation.
 
-### Disconnecting the PowerShell Session
+#### Disconnecting the PowerShell Session
 
 Remember to close the PowerShell session once your configuration tasks are completed:
 
@@ -100,13 +102,16 @@ The Exchange App automatically creates all the rooms in the configured room list
 
 ## Configuration
 
-The Exchange App is configured by defining one or more authentication credentials. Each configuration requires the following data:
+The Exchange App is configured by defining one or more authentication credentials:
 
 | Attribute        | Description                                               |
 |------------------|-----------------------------------------------------------|
-| `clientID`  | ClientID obtained in Entra admin center. |
-| `clientSecret`       | ClientSecret obtained in Entra admin center.                       |
-| `tenantID`   | ID of the Exchange ONline organization                   |
+| `clientID`  | ClientID obtained in Entra admin center. (Only for OAuth authentication) |
+| `clientSecret` | ClientSecret obtained in Entra admin center. (Only for OAuth authentication) |
+| `tenantID`   | ID of the Exchange Online organization (Only for OAuth authentication) |
+| `ewsURL`     | URL of the EWS API (only for NTLM authentication)|
+| `username`   | NTLM username (only for NTLM authentication)|
+| `password`   | NTLM password (only for NTLM authentication)|
 | `serviceUserUPN`   | Email address of the service user (for querying rooms, creating anonymous bookings, ...) |
 | `roomListUPN`   | Email of the room list containing the rooms to be synchronized. CAC will be deactivated if left empty. |
 | `bookingAppURL`   | URL of the booking app. Use the one from example below. |
@@ -122,6 +127,11 @@ The configuration is done via a corresponding JSON structure. As an example, the
   "clientId": "01234567-89ab-cdef-0123-456789abcdef",
   "clientSecret": "random-cl13nt-s3cr3t",
   "tenantId": "01234567-89ab-cdef-0123-456789abcdef",
+
+  "ewsURL": "https://outlook.office365.com/EWS/Exchange.asmx",
+  "username": "username",
+  "password": "password",
+
   "serviceUserUPN": "eliona@example.com",
   "roomListUPN": "first.floor@example.com",
 
