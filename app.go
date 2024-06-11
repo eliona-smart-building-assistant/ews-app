@@ -341,6 +341,7 @@ func listenForBookings(config apiserver.Configuration) {
 		log.Error("eliona-bookings", "listening for booking changes: %v", err)
 		return
 	}
+outer:
 	for group := range bookingsChan {
 		if len(group.Occurrences) == 1 && group.Occurrences[0].Cancelled {
 			// Typical case, just a single booking. Cancel the RecurringMaster/group.
@@ -351,7 +352,7 @@ func listenForBookings(config apiserver.Configuration) {
 			if occurrence.Cancelled {
 				// We must handle cancellation differently to cancel just single occurrences.
 				cancelOccurrenceInEWS(group, occurrence, config)
-				continue
+				continue outer
 			}
 		}
 		bookInEWS(group, config)
@@ -418,6 +419,7 @@ func bookInEWS(group syncmodel.BookingGroup, config apiserver.Configuration) {
 	defer mu.Unlock()
 	if len(group.Occurrences) != 1 {
 		log.Error("booking", "booking %d != 1 occurences of a group ElionaID %d is not supported", len(group.Occurrences), group.ElionaID)
+		return
 	}
 	book := group.Occurrences[0]
 	assets, err := conf.GetAssetEmailsByIds(book.GetAssetIDs())
