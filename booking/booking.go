@@ -310,7 +310,7 @@ func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan 
 			organizer := ""
 			occurrences := make([]syncmodel.BookingOccurrence, 0, len(bookingGroup.Bookings))
 			for _, booking := range bookingGroup.Bookings {
-				roomBookings := make([]syncmodel.RoomBooking, 0, len(booking.AssetIds))
+				roomBookings := make([]syncmodel.RoomBooking, len(booking.AssetIds))
 				for i, assetID := range booking.AssetIds {
 					roomBookings[i] = syncmodel.RoomBooking{
 						AssetID: assetID,
