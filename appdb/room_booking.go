@@ -24,56 +24,56 @@ import (
 
 // RoomBooking is an object representing the database table.
 type RoomBooking struct {
-	ID               int64       `boil:"id" json:"id" toml:"id" yaml:"id"`
-	UnifiedBookingID int64       `boil:"unified_booking_id" json:"unified_booking_id" toml:"unified_booking_id" yaml:"unified_booking_id"`
-	ExchangeID       null.String `boil:"exchange_id" json:"exchange_id,omitempty" toml:"exchange_id" yaml:"exchange_id,omitempty"`
+	ID                  int64       `boil:"id" json:"id" toml:"id" yaml:"id"`
+	BookingOccurrenceID int64       `boil:"booking_occurrence_id" json:"booking_occurrence_id" toml:"booking_occurrence_id" yaml:"booking_occurrence_id"`
+	ExchangeID          null.String `boil:"exchange_id" json:"exchange_id,omitempty" toml:"exchange_id" yaml:"exchange_id,omitempty"`
 
 	R *roomBookingR `boil:"-" json:"-" toml:"-" yaml:"-"`
 	L roomBookingL  `boil:"-" json:"-" toml:"-" yaml:"-"`
 }
 
 var RoomBookingColumns = struct {
-	ID               string
-	UnifiedBookingID string
-	ExchangeID       string
+	ID                  string
+	BookingOccurrenceID string
+	ExchangeID          string
 }{
-	ID:               "id",
-	UnifiedBookingID: "unified_booking_id",
-	ExchangeID:       "exchange_id",
+	ID:                  "id",
+	BookingOccurrenceID: "booking_occurrence_id",
+	ExchangeID:          "exchange_id",
 }
 
 var RoomBookingTableColumns = struct {
-	ID               string
-	UnifiedBookingID string
-	ExchangeID       string
+	ID                  string
+	BookingOccurrenceID string
+	ExchangeID          string
 }{
-	ID:               "room_booking.id",
-	UnifiedBookingID: "room_booking.unified_booking_id",
-	ExchangeID:       "room_booking.exchange_id",
+	ID:                  "room_booking.id",
+	BookingOccurrenceID: "room_booking.booking_occurrence_id",
+	ExchangeID:          "room_booking.exchange_id",
 }
 
 // Generated where
 
 var RoomBookingWhere = struct {
-	ID               whereHelperint64
-	UnifiedBookingID whereHelperint64
-	ExchangeID       whereHelpernull_String
+	ID                  whereHelperint64
+	BookingOccurrenceID whereHelperint64
+	ExchangeID          whereHelpernull_String
 }{
-	ID:               whereHelperint64{field: "\"ews\".\"room_booking\".\"id\""},
-	UnifiedBookingID: whereHelperint64{field: "\"ews\".\"room_booking\".\"unified_booking_id\""},
-	ExchangeID:       whereHelpernull_String{field: "\"ews\".\"room_booking\".\"exchange_id\""},
+	ID:                  whereHelperint64{field: "\"ews\".\"room_booking\".\"id\""},
+	BookingOccurrenceID: whereHelperint64{field: "\"ews\".\"room_booking\".\"booking_occurrence_id\""},
+	ExchangeID:          whereHelpernull_String{field: "\"ews\".\"room_booking\".\"exchange_id\""},
 }
 
 // RoomBookingRels is where relationship names are stored.
 var RoomBookingRels = struct {
-	UnifiedBooking string
+	BookingOccurrence string
 }{
-	UnifiedBooking: "UnifiedBooking",
+	BookingOccurrence: "BookingOccurrence",
 }
 
 // roomBookingR is where relationships are stored.
 type roomBookingR struct {
-	UnifiedBooking *UnifiedBooking `boil:"UnifiedBooking" json:"UnifiedBooking" toml:"UnifiedBooking" yaml:"UnifiedBooking"`
+	BookingOccurrence *BookingOccurrence `boil:"BookingOccurrence" json:"BookingOccurrence" toml:"BookingOccurrence" yaml:"BookingOccurrence"`
 }
 
 // NewStruct creates a new relationship struct
@@ -81,20 +81,20 @@ func (*roomBookingR) NewStruct() *roomBookingR {
 	return &roomBookingR{}
 }
 
-func (r *roomBookingR) GetUnifiedBooking() *UnifiedBooking {
+func (r *roomBookingR) GetBookingOccurrence() *BookingOccurrence {
 	if r == nil {
 		return nil
 	}
-	return r.UnifiedBooking
+	return r.BookingOccurrence
 }
 
 // roomBookingL is where Load methods for each relationship are stored.
 type roomBookingL struct{}
 
 var (
-	roomBookingAllColumns            = []string{"id", "unified_booking_id", "exchange_id"}
+	roomBookingAllColumns            = []string{"id", "booking_occurrence_id", "exchange_id"}
 	roomBookingColumnsWithoutDefault = []string{}
-	roomBookingColumnsWithDefault    = []string{"id", "unified_booking_id", "exchange_id"}
+	roomBookingColumnsWithDefault    = []string{"id", "booking_occurrence_id", "exchange_id"}
 	roomBookingPrimaryKeyColumns     = []string{"id"}
 	roomBookingGeneratedColumns      = []string{}
 )
@@ -424,20 +424,20 @@ func (q roomBookingQuery) Exists(ctx context.Context, exec boil.ContextExecutor)
 	return count > 0, nil
 }
 
-// UnifiedBooking pointed to by the foreign key.
-func (o *RoomBooking) UnifiedBooking(mods ...qm.QueryMod) unifiedBookingQuery {
+// BookingOccurrence pointed to by the foreign key.
+func (o *RoomBooking) BookingOccurrence(mods ...qm.QueryMod) bookingOccurrenceQuery {
 	queryMods := []qm.QueryMod{
-		qm.Where("\"id\" = ?", o.UnifiedBookingID),
+		qm.Where("\"id\" = ?", o.BookingOccurrenceID),
 	}
 
 	queryMods = append(queryMods, mods...)
 
-	return UnifiedBookings(queryMods...)
+	return BookingOccurrences(queryMods...)
 }
 
-// LoadUnifiedBooking allows an eager lookup of values, cached into the
+// LoadBookingOccurrence allows an eager lookup of values, cached into the
 // loaded structs of the objects. This is for an N-1 relationship.
-func (roomBookingL) LoadUnifiedBooking(ctx context.Context, e boil.ContextExecutor, singular bool, maybeRoomBooking interface{}, mods queries.Applicator) error {
+func (roomBookingL) LoadBookingOccurrence(ctx context.Context, e boil.ContextExecutor, singular bool, maybeRoomBooking interface{}, mods queries.Applicator) error {
 	var slice []*RoomBooking
 	var object *RoomBooking
 
@@ -468,7 +468,7 @@ func (roomBookingL) LoadUnifiedBooking(ctx context.Context, e boil.ContextExecut
 		if object.R == nil {
 			object.R = &roomBookingR{}
 		}
-		args[object.UnifiedBookingID] = struct{}{}
+		args[object.BookingOccurrenceID] = struct{}{}
 
 	} else {
 		for _, obj := range slice {
@@ -476,7 +476,7 @@ func (roomBookingL) LoadUnifiedBooking(ctx context.Context, e boil.ContextExecut
 				obj.R = &roomBookingR{}
 			}
 
-			args[obj.UnifiedBookingID] = struct{}{}
+			args[obj.BookingOccurrenceID] = struct{}{}
 
 		}
 	}
@@ -493,8 +493,8 @@ func (roomBookingL) LoadUnifiedBooking(ctx context.Context, e boil.ContextExecut
 	}
 
 	query := NewQuery(
-		qm.From(`ews.unified_booking`),
-		qm.WhereIn(`ews.unified_booking.id in ?`, argsSlice...),
+		qm.From(`ews.booking_occurrence`),
+		qm.WhereIn(`ews.booking_occurrence.id in ?`, argsSlice...),
 	)
 	if mods != nil {
 		mods.Apply(query)
@@ -502,22 +502,22 @@ func (roomBookingL) LoadUnifiedBooking(ctx context.Context, e boil.ContextExecut
 
 	results, err := query.QueryContext(ctx, e)
 	if err != nil {
-		return errors.Wrap(err, "failed to eager load UnifiedBooking")
+		return errors.Wrap(err, "failed to eager load BookingOccurrence")
 	}
 
-	var resultSlice []*UnifiedBooking
+	var resultSlice []*BookingOccurrence
 	if err = queries.Bind(results, &resultSlice); err != nil {
-		return errors.Wrap(err, "failed to bind eager loaded slice UnifiedBooking")
+		return errors.Wrap(err, "failed to bind eager loaded slice BookingOccurrence")
 	}
 
 	if err = results.Close(); err != nil {
-		return errors.Wrap(err, "failed to close results of eager load for unified_booking")
+		return errors.Wrap(err, "failed to close results of eager load for booking_occurrence")
 	}
 	if err = results.Err(); err != nil {
-		return errors.Wrap(err, "error occurred during iteration of eager loaded relations for unified_booking")
+		return errors.Wrap(err, "error occurred during iteration of eager loaded relations for booking_occurrence")
 	}
 
-	if len(unifiedBookingAfterSelectHooks) != 0 {
+	if len(bookingOccurrenceAfterSelectHooks) != 0 {
 		for _, obj := range resultSlice {
 			if err := obj.doAfterSelectHooks(ctx, e); err != nil {
 				return err
@@ -531,9 +531,9 @@ func (roomBookingL) LoadUnifiedBooking(ctx context.Context, e boil.ContextExecut
 
 	if singular {
 		foreign := resultSlice[0]
-		object.R.UnifiedBooking = foreign
+		object.R.BookingOccurrence = foreign
 		if foreign.R == nil {
-			foreign.R = &unifiedBookingR{}
+			foreign.R = &bookingOccurrenceR{}
 		}
 		foreign.R.RoomBookings = append(foreign.R.RoomBookings, object)
 		return nil
@@ -541,10 +541,10 @@ func (roomBookingL) LoadUnifiedBooking(ctx context.Context, e boil.ContextExecut
 
 	for _, local := range slice {
 		for _, foreign := range resultSlice {
-			if local.UnifiedBookingID == foreign.ID {
-				local.R.UnifiedBooking = foreign
+			if local.BookingOccurrenceID == foreign.ID {
+				local.R.BookingOccurrence = foreign
 				if foreign.R == nil {
-					foreign.R = &unifiedBookingR{}
+					foreign.R = &bookingOccurrenceR{}
 				}
 				foreign.R.RoomBookings = append(foreign.R.RoomBookings, local)
 				break
@@ -555,18 +555,18 @@ func (roomBookingL) LoadUnifiedBooking(ctx context.Context, e boil.ContextExecut
 	return nil
 }
 
-// SetUnifiedBookingG of the roomBooking to the related item.
-// Sets o.R.UnifiedBooking to related.
+// SetBookingOccurrenceG of the roomBooking to the related item.
+// Sets o.R.BookingOccurrence to related.
 // Adds o to related.R.RoomBookings.
 // Uses the global database handle.
-func (o *RoomBooking) SetUnifiedBookingG(ctx context.Context, insert bool, related *UnifiedBooking) error {
-	return o.SetUnifiedBooking(ctx, boil.GetContextDB(), insert, related)
+func (o *RoomBooking) SetBookingOccurrenceG(ctx context.Context, insert bool, related *BookingOccurrence) error {
+	return o.SetBookingOccurrence(ctx, boil.GetContextDB(), insert, related)
 }
 
-// SetUnifiedBooking of the roomBooking to the related item.
-// Sets o.R.UnifiedBooking to related.
+// SetBookingOccurrence of the roomBooking to the related item.
+// Sets o.R.BookingOccurrence to related.
 // Adds o to related.R.RoomBookings.
-func (o *RoomBooking) SetUnifiedBooking(ctx context.Context, exec boil.ContextExecutor, insert bool, related *UnifiedBooking) error {
+func (o *RoomBooking) SetBookingOccurrence(ctx context.Context, exec boil.ContextExecutor, insert bool, related *BookingOccurrence) error {
 	var err error
 	if insert {
 		if err = related.Insert(ctx, exec, boil.Infer()); err != nil {
@@ -576,7 +576,7 @@ func (o *RoomBooking) SetUnifiedBooking(ctx context.Context, exec boil.ContextEx
 
 	updateQuery := fmt.Sprintf(
 		"UPDATE \"ews\".\"room_booking\" SET %s WHERE %s",
-		strmangle.SetParamNames("\"", "\"", 1, []string{"unified_booking_id"}),
+		strmangle.SetParamNames("\"", "\"", 1, []string{"booking_occurrence_id"}),
 		strmangle.WhereClause("\"", "\"", 2, roomBookingPrimaryKeyColumns),
 	)
 	values := []interface{}{related.ID, o.ID}
@@ -590,17 +590,17 @@ func (o *RoomBooking) SetUnifiedBooking(ctx context.Context, exec boil.ContextEx
 		return errors.Wrap(err, "failed to update local table")
 	}
 
-	o.UnifiedBookingID = related.ID
+	o.BookingOccurrenceID = related.ID
 	if o.R == nil {
 		o.R = &roomBookingR{
-			UnifiedBooking: related,
+			BookingOccurrence: related,
 		}
 	} else {
-		o.R.UnifiedBooking = related
+		o.R.BookingOccurrence = related
 	}
 
 	if related.R == nil {
-		related.R = &unifiedBookingR{
+		related.R = &bookingOccurrenceR{
 			RoomBookings: RoomBookingSlice{o},
 		}
 	} else {

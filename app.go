@@ -20,12 +20,11 @@ import (
 	"errors"
 	"ews/apiserver"
 	"ews/apiservices"
-	"ews/appdb"
 	"ews/booking"
 	"ews/conf"
 	"ews/eliona"
 	"ews/ews"
-	"ews/model"
+	syncmodel "ews/model/sync"
 	"fmt"
 	"net/http"
 	"sync"
@@ -39,7 +38,6 @@ import (
 	"github.com/eliona-smart-building-assistant/go-utils/db"
 	utilshttp "github.com/eliona-smart-building-assistant/go-utils/http"
 	"github.com/eliona-smart-building-assistant/go-utils/log"
-	"github.com/volatiletech/null/v8"
 )
 
 func initialization() {
@@ -58,6 +56,11 @@ func initialization() {
 
 	app.Patch(conn, app.AppName(), "000201",
 		app.ExecSqlFile("conf/000200.sql"),
+	)
+
+	// Recurring events for v0.3.0
+	app.Patch(conn, app.AppName(), "000300",
+		app.ExecSqlFile("conf/000300.sql"),
 	)
 }
 
@@ -143,8 +146,8 @@ func collectResources(config apiserver.Configuration) error {
 		log.Error("conf", "getting assets from DB: %v", err)
 		return err
 	}
-	toBook := make(map[string]model.UnifiedBooking)
-	var cancelledBookings []model.RoomBooking
+	toBook := make(map[string]syncmodel.BookingGroup)
+	var cancelledBookings []syncmodel.RoomBooking
 
 	for _, ast := range assets {
 		if !ast.AssetID.Valid {
@@ -155,7 +158,6 @@ func collectResources(config apiserver.Configuration) error {
 		}
 
 		mu.Lock()
-
 		syncState, err := conf.GetSyncState(ast.ID)
 		if err != nil {
 			log.Error("conf", "getting sync state: %v", err)
@@ -170,51 +172,61 @@ func collectResources(config apiserver.Configuration) error {
 			log.Error("EWS", "getting appointments for %s: %v", ast.ProviderID, err)
 			return err
 		}
+
 		for i := range updated {
 			a := updated[i]
-			a, err := assignElionaID(a)
+			a, err := assignElionaGroupID(a)
 			if err != nil {
 				return err
 			}
 			if existing, ok := toBook[a.ExchangeUID]; !ok {
 				toBook[a.ExchangeUID] = a
 			} else {
-				existing.RoomBookings = append(existing.RoomBookings, a.RoomBookings...)
-				toBook[a.ExchangeUID] = existing
+				for i, existingOccurrence := range existing.Occurrences {
+					existing.Occurrences[i].RoomBookings = append(existingOccurrence.RoomBookings, a.Occurrences[i].RoomBookings...)
+					toBook[a.ExchangeUID] = existing
+				}
 			}
 		}
 		for i := range new {
 			a := new[i]
-			a, err := assignElionaID(a)
+			a, err := assignElionaGroupID(a)
 			if err != nil {
 				return err
 			}
 			if existing, ok := toBook[a.ExchangeUID]; !ok {
 				toBook[a.ExchangeUID] = a
 			} else {
-				existing.RoomBookings = append(existing.RoomBookings, a.RoomBookings...)
-				toBook[a.ExchangeUID] = existing
+				for i, existingOccurrence := range existing.Occurrences {
+					existing.Occurrences[i].RoomBookings = append(existingOccurrence.RoomBookings, a.Occurrences[i].RoomBookings...)
+					toBook[a.ExchangeUID] = existing
+				}
 			}
 		}
 		for _, cancelledExchangeID := range cancelled {
-			dbUnifiedBooking, err := conf.GetUnifiedBookingByExchangeID(cancelledExchangeID)
+			dbBookingGroup, err := conf.GetBookingGroupByExchangeID(cancelledExchangeID)
 			if err != nil && !errors.Is(err, conf.ErrNotFound) {
-				log.Error("conf", "getting booking for exchange ID %s: %v", cancelledExchangeID, err)
+				log.Error("conf", "getting booking group for exchange ID %s: %v", cancelledExchangeID, err)
 				return err
-			} else if errors.Is(err, conf.ErrNotFound) || !dbUnifiedBooking.BookingID.Valid {
+			} else if errors.Is(err, conf.ErrNotFound) || !dbBookingGroup.ElionaGroupID.Valid {
 				// Does not matter, cancelled anyways
 				continue
 			}
 
-			unifiedBooking := model.UnifiedBooking{
-				ElionaID:  dbUnifiedBooking.BookingID.Int32,
-				Cancelled: true,
+			dbOccurrences, err := conf.GetBookingOccurrencesByGroupID(dbBookingGroup.ID)
+			if err != nil {
+				log.Error("conf", "getting booking occurrences for exchange ID %s groupID %d: %v", cancelledExchangeID, dbBookingGroup.ID, err)
+				return err
 			}
-
-			cancelledBookings = append(cancelledBookings, model.RoomBooking{
-				AssetID:        ast.AssetID.Int32,
-				UnifiedBooking: &unifiedBooking,
-			})
+			for _, dbOcc := range dbOccurrences {
+				occ := syncmodel.BookingOccurrence{
+					ElionaID: dbOcc.ElionaBookingID.Int32,
+				}
+				cancelledBookings = append(cancelledBookings, syncmodel.RoomBooking{
+					AssetID:           ast.AssetID.Int32,
+					BookingOccurrence: &occ,
+				})
+			}
 		}
 		if err := conf.PersistSyncState(ast.ID, newSyncState); err != nil {
 			log.Error("conf", "persisting sync state for %v: %v", ast.ID, err)
@@ -258,21 +270,21 @@ func discoverNewAssets(ewsHelper *ews.EWSHelper, config apiserver.Configuration)
 	return nil
 }
 
-func assignElionaID(a model.UnifiedBooking) (model.UnifiedBooking, error) {
-	booking, err := conf.GetUnifiedBookingByExchangeUID(a.ExchangeUID)
+func assignElionaGroupID(a syncmodel.BookingGroup) (syncmodel.BookingGroup, error) {
+	booking, err := conf.GetBookingGroupByExchangeUID(a.ExchangeUID)
 	if err != nil && !errors.Is(err, conf.ErrNotFound) {
 		log.Error("conf", "getting booking for exchange UID %s: %v", a.ExchangeUID, err)
-		return model.UnifiedBooking{}, err
+		return syncmodel.BookingGroup{}, err
 	} else if errors.Is(err, conf.ErrNotFound) {
 		// Booking is new
 		return a, nil
 	}
 
-	if !booking.BookingID.Valid {
+	if !booking.ElionaGroupID.Valid {
 		// Booking not yet synced to Eliona
 		return a, nil
 	}
-	a.ElionaID = booking.BookingID.Int32
+	a.ElionaID = booking.ElionaGroupID.Int32
 	return a, nil
 }
 
@@ -299,55 +311,103 @@ func listenForBookings(config apiserver.Configuration) {
 		log.Error("eliona-bookings", "listening for booking changes: %v", err)
 		return
 	}
-	for book := range bookingsChan {
-		if book.Cancelled {
-			cancelInEWS(book, config)
+	for group := range bookingsChan {
+		if len(group.Occurrences) == 1 && group.Occurrences[0].Cancelled {
+			// Typical case, just a single booking. Cancel the RecurringMaster/group.
+			cancelInEWS(group, config)
 			continue
 		}
-		bookInEWS(book, config)
+		for _, occurrence := range group.Occurrences {
+			if occurrence.Cancelled {
+				// We must handle cancellation differently to cancel just single occurrences.
+				cancelOccurrenceInEWS(group, occurrence, config)
+				continue
+			}
+		}
+		bookInEWS(group, config)
+		continue
 	}
 }
 
-func cancelInEWS(book model.UnifiedBooking, config apiserver.Configuration) {
+// cancelInEWS requests cancellation in Exchange, but first enhances the structs
+// with Exchange IDs stored in the DB.
+func cancelInEWS(group syncmodel.BookingGroup, config apiserver.Configuration) {
 	mu.Lock()
 	defer mu.Unlock()
-	ewsHelper := ews.NewEWSHelper(config, book.OrganizerEmail)
-	booking, err := conf.GetUnifiedBookingByElionaID(book.ElionaID)
+	ewsHelper := ews.NewEWSHelper(config, group.OrganizerEmail)
+	booking, err := conf.GetBookingGroupByElionaID(group.ElionaID)
 	if err != nil {
-		log.Error("conf", "getting booking for Eliona ID %v: %v", book.ElionaID, err)
+		log.Error("conf", "getting booking for Eliona ID %v: %v", group.ElionaID, err)
 		return
 	} else if !booking.ExchangeUID.Valid || !booking.ExchangeOrganizerMailbox.Valid {
 		log.Error("db", "cancelling booking: booking %v does not have exchangeUID or Mailbox", booking.ID)
 		return
 	}
-	book.ExchangeUID = booking.ExchangeUID.String
-	book.OrganizerEmail = booking.ExchangeOrganizerMailbox.String
-	if err := ewsHelper.CancelEvent(book); err != nil {
+	group.ExchangeUID = booking.ExchangeUID.String
+	group.OrganizerEmail = booking.ExchangeOrganizerMailbox.String
+	if err := ewsHelper.CancelEvent(group); err != nil {
 		log.Error("ews", "cancelling event: %v", err)
 		return
 	}
 }
 
-func bookInEWS(book model.UnifiedBooking, config apiserver.Configuration) {
+// cancelOccurrenceInEWS requests cancellation of whole occurrence in Exchange,
+// but first enhances the structs with Exchange IDs stored in the DB.
+func cancelOccurrenceInEWS(group syncmodel.BookingGroup, occurrence syncmodel.BookingOccurrence, config apiserver.Configuration) {
 	mu.Lock()
 	defer mu.Unlock()
+	ewsHelper := ews.NewEWSHelper(config, group.OrganizerEmail)
+	booking, err := conf.GetBookingGroupByElionaID(group.ElionaID)
+	if err != nil {
+		log.Error("conf", "getting booking for Eliona ID %v: %v", group.ElionaID, err)
+		return
+	} else if !booking.ExchangeUID.Valid || !booking.ExchangeOrganizerMailbox.Valid {
+		log.Error("db", "cancelling booking: booking %v does not have exchangeUID or Mailbox", booking.ID)
+		return
+	}
+	group.ExchangeUID = booking.ExchangeUID.String
+	group.OrganizerEmail = booking.ExchangeOrganizerMailbox.String
+
+	dbOccurrence, err := conf.GetBookingOccurrenceByElionaID(occurrence.ElionaID)
+	if err != nil {
+		log.Error("conf", "getting dbOccurrence for Eliona ID %v: %v", group.ElionaID, err)
+		return
+	} else if dbOccurrence.ExchangeInstanceIndex == 0 {
+		log.Error("db", "cancelling occurrence: dbOccurrence %v does not have ExchangeInstanceIndex", booking.ID)
+		return
+	}
+
+	if err := ewsHelper.CancelOccurrence(group, occurrence); err != nil {
+		log.Error("ews", "cancelling event: %v", err)
+		return
+	}
+}
+
+func bookInEWS(group syncmodel.BookingGroup, config apiserver.Configuration) {
+	mu.Lock()
+	defer mu.Unlock()
+	if len(group.Occurrences) != 1 {
+		log.Error("booking", "booking %d != 1 occurences of a group ElionaID %d is not supported", len(group.Occurrences), group.ElionaID)
+	}
+	book := group.Occurrences[0]
 	assets, err := conf.GetAssetEmailsByIds(book.GetAssetIDs())
 	if err != nil {
 		log.Error("conf", "getting asset IDs %v: %v", book.GetAssetIDs(), err)
 		return
 	}
-	createAppointment(assets, book, config)
+	createAppointment(assets, group, config)
 }
 
-func createAppointment(assetsEmails []string, book model.UnifiedBooking, config apiserver.Configuration) {
-	if book.OrganizerEmail == "" {
+func createAppointment(assetsEmails []string, group syncmodel.BookingGroup, config apiserver.Configuration) {
+	book := group.Occurrences[0]
+	if group.OrganizerEmail == "" {
 		// Otherwise we get a 422 error
-		book.OrganizerEmail = *config.ServiceUserUPN
+		group.OrganizerEmail = *config.ServiceUserUPN
 	}
 	// We want to book on behalf of the organizer, thus we need to create a helper for each booking.
-	ewsHelper := ews.NewEWSHelper(config, book.OrganizerEmail)
+	ewsHelper := ews.NewEWSHelper(config, group.OrganizerEmail)
 	app := ews.Appointment{
-		Organizer: book.OrganizerEmail,
+		Organizer: group.OrganizerEmail,
 		Subject:   "Eliona booking",
 		Start:     book.Start,
 		End:       book.End,
@@ -355,47 +415,46 @@ func createAppointment(assetsEmails []string, book model.UnifiedBooking, config 
 		Attendees: assetsEmails,
 	}
 	exchangeUID, resourceEventIDs, err := ewsHelper.CreateAppointment(app)
-	book.ExchangeUID = exchangeUID
+	group.ExchangeUID = exchangeUID
 	if errors.Is(err, ews.ErrDeclined) {
 		bc := booking.NewClient(*config.BookingAppURL)
-		if err := ewsHelper.CancelEvent(book); err != nil {
+		if err := ewsHelper.CancelEvent(group); err != nil {
 			log.Error("ews", "cancelling conflicting event: %v", err)
 			return
 		}
-		if err := bc.Cancel(book.ElionaID, "conflict"); err != nil {
+		if err := bc.Cancel(group.ElionaID, "conflict"); err != nil {
 			log.Error("booking", "cancelling conflicting appointment: %v", err)
 			return
 		}
-		log.Debug("ews", "booking for %v was conflicting; cancelled", book.OrganizerEmail)
-	} else if errors.Is(err, ews.ErrNonExistentMailbox) && book.OrganizerEmail != *config.ServiceUserUPN {
-		log.Debug("ews", "booking for %v will be booked by a service user", book.OrganizerEmail)
-		book.OrganizerEmail = *config.ServiceUserUPN
-		createAppointment(assetsEmails, book, config)
+		log.Debug("ews", "booking for %v was conflicting; cancelled", group.OrganizerEmail)
+	} else if errors.Is(err, ews.ErrNonExistentMailbox) && group.OrganizerEmail != *config.ServiceUserUPN {
+		log.Debug("ews", "booking for %v will be booked by a service user", group.OrganizerEmail)
+		group.OrganizerEmail = *config.ServiceUserUPN
+		createAppointment(assetsEmails, group, config)
 		return
 	} else if err != nil {
-		log.Error("ews", "creating appointment %v: %v", book.ElionaID, err)
-		log.Debug("ews", "cancelling booking %v", book.ElionaID)
+		log.Error("ews", "creating appointment %v: %v", group.ElionaID, err)
+		log.Debug("ews", "cancelling booking %v", group.ElionaID)
 		bc := booking.NewClient(*config.BookingAppURL)
-		if err := bc.Cancel(book.ElionaID, "error"); err != nil {
+		if err := bc.Cancel(group.ElionaID, "error"); err != nil {
 			log.Error("booking", "cancelling errored appointment: %v", err)
 			return
 		}
 		return
 	}
-	log.Debug("ews", "created a booking for %v", book.OrganizerEmail)
+	log.Debug("ews", "created a booking for %v", group.OrganizerEmail)
 
-	dbBooking := appdb.UnifiedBooking{
-		ExchangeUID:              null.StringFrom(book.ExchangeUID),
-		ExchangeOrganizerMailbox: null.StringFrom(book.OrganizerEmail),
-		BookingID:                null.Int32From(book.ElionaID),
-	}
-	var dbRoomBookings []appdb.RoomBooking
+	// For upserting, we can clear the roombookings, as we are interested just
+	// in the resource event IDs.
+	book.RoomBookings = []syncmodel.RoomBooking{}
 	for _, resourceEventID := range resourceEventIDs {
-		dbRoomBookings = append(dbRoomBookings, appdb.RoomBooking{
-			ExchangeID: null.StringFrom(resourceEventID),
+		book.RoomBookings = append(book.RoomBookings, syncmodel.RoomBooking{
+			ExchangeIDInResourceMailbox: resourceEventID,
 		})
 	}
-	if err := conf.UpsertBooking(dbBooking, dbRoomBookings); err != nil {
+	group.Occurrences[0] = book
+
+	if err := conf.UpsertBooking(group); err != nil {
 		log.Error("conf", "upserting newly created booking: %v", err)
 		return
 	}

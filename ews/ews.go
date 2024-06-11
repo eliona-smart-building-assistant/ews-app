@@ -24,6 +24,7 @@ import (
 	"errors"
 	"ews/apiserver"
 	"ews/model"
+	syncmodel "ews/model/sync"
 	"fmt"
 	"io"
 	"net/http"
@@ -251,8 +252,9 @@ type delete struct {
 }
 
 type calendarItem struct {
-	ItemId           itemId    `xml:"ItemId"`
-	UID              string    `xml:"UID"`
+	ItemId           itemId `xml:"ItemId"`
+	UID              string `xml:"UID"`
+	InstanceIndex    int
 	Subject          string    `xml:"Subject"`
 	DateTimeReceived string    `xml:"DateTimeReceived"`
 	Start            time.Time `xml:"Start"`
@@ -275,7 +277,7 @@ type mailbox struct {
 	EmailAddress string `xml:"EmailAddress"` // This might be either email address, or Legacy DN.
 }
 
-func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncState string) (new []model.UnifiedBooking, updated []model.UnifiedBooking, cancelled []string, newSyncState string, err error) {
+func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncState string) (new []syncmodel.BookingGroup, updated []syncmodel.BookingGroup, cancelled []string, newSyncState string, err error) {
 	// Every synchronization, we will get a list of Create, Update and Delete events (and some cruft
 	// amongst it). When there is no SyncState, we will get only Create events for all events
 	// present on server. If that happens to be a lot of events, these will be created over time by
@@ -331,7 +333,6 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
 	if err := xml.Unmarshal(responseXML, &env); err != nil {
 		return nil, nil, nil, syncState, fmt.Errorf("unmarshaling XML: %v", err)
 	}
-
 	changes := env.Body.SyncFolderItemsResponse.ResponseMessages.SyncFolderItemsResponseMessage.Changes
 	for _, change := range changes.Create {
 		if err := change.checkItem(); err != nil {
@@ -344,23 +345,35 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
 			return nil, nil, nil, syncState, fmt.Errorf("resolving distinguished name '%s': %v", item.Organizer.Mailbox.EmailAddress, err)
 		}
 
+		items := []calendarItem{*item}
 		if change.CalendarItem.CalendarItemType == "RecurringMaster" {
-			log.Warn("EWS", "A recurring event was created for %s by %s. Recurring events are not supported!", roomEmail, organizerEmail)
-			continue
+			recurringItems, err := h.expandRecurrence(item.ItemId.Id, roomEmail)
+			if err != nil {
+				return nil, nil, nil, syncState, fmt.Errorf("expanding recurrence for event %v: %v", item.ItemId.Id, err)
+			}
+			items = recurringItems // RecurringMaster is a redundant occurence, only the "Occurence"s should be booked
 		}
 
-		new = append(new, model.UnifiedBooking{
+		group := syncmodel.BookingGroup{
 			ExchangeUID:    item.UID,
 			OrganizerEmail: organizerEmail,
-			Start:          item.Start,
-			End:            item.End,
-			Cancelled:      false,
-			RoomBookings: []model.RoomBooking{{
-				ExchangeIDInResourceMailbox: item.ItemId.Id,
-				AssetID:                     assetID,
-			}},
-		})
+		}
+		for _, item := range items {
+			group.Occurrences = append(group.Occurrences, syncmodel.BookingOccurrence{
+				InstanceIndex: item.InstanceIndex,
+				Start:         item.Start,
+				End:           item.End,
+				Cancelled:     false,
+				RoomBookings: []syncmodel.RoomBooking{{
+					ExchangeIDInResourceMailbox: item.ItemId.Id,
+					AssetID:                     assetID,
+				}},
+			})
+		}
+
+		new = append(new, group)
 	}
+
 	for _, change := range changes.Update {
 		if err := change.checkItem(); err != nil {
 			log.Debug("ews", "skipped updating calendar item: %v", err)
@@ -372,23 +385,34 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
 			return nil, nil, nil, syncState, fmt.Errorf("resolving distinguished name '%s': %v", item.Organizer.Mailbox.EmailAddress, err)
 		}
 
+		items := []calendarItem{*item}
 		if change.CalendarItem.CalendarItemType == "RecurringMaster" {
-			log.Warn("EWS", "A recurring event was updated for %s by %s. Recurring events are not supported!", roomEmail, organizerEmail)
-			continue
+			fmt.Println(item)
+			recurringItems, err := h.expandRecurrence(item.ItemId.Id, roomEmail)
+			if err != nil {
+				return nil, nil, nil, syncState, fmt.Errorf("expanding recurrence for event %v: %v", item.ItemId.Id, err)
+			}
+			items = recurringItems // RecurringMaster is a redundant occurence, only the "Occurence"s should be booked
 		}
 
-		updated = append(updated, model.UnifiedBooking{
+		group := syncmodel.BookingGroup{
 			ExchangeUID:    item.UID,
 			OrganizerEmail: organizerEmail,
-			Start:          item.Start,
-			End:            item.End,
-			Cancelled:      false,
-			RoomBookings: []model.RoomBooking{{
-				ExchangeIDInResourceMailbox: item.ItemId.Id,
-				AssetID:                     assetID,
-			}},
-		})
+		}
+		for _, item := range items {
+			group.Occurrences = append(group.Occurrences, syncmodel.BookingOccurrence{
+				InstanceIndex: item.InstanceIndex,
+				Start:         item.Start,
+				End:           item.End,
+				Cancelled:     false,
+				RoomBookings: []syncmodel.RoomBooking{{
+					ExchangeIDInResourceMailbox: item.ItemId.Id,
+					AssetID:                     assetID,
+				}},
+			})
+		}
 	}
+
 	for _, change := range changes.Delete {
 		cancelled = append(cancelled, change.ItemId.Id)
 	}
@@ -420,6 +444,94 @@ func (cr createOrUpdate) checkItem() error {
 		return fmt.Errorf("item %v has no organizer", cr.CalendarItem.ItemId.Id)
 	}
 	return nil
+}
+
+func (h *EWSHelper) expandRecurrence(eventID, roomEmail string) ([]calendarItem, error) {
+	var items []calendarItem
+	instanceIndex := 0
+
+	for {
+		instanceIndex++ // Starts with 1
+		requestXML := fmt.Sprintf(`
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+    <soap:Header>
+        <t:RequestServerVersion Version="Exchange2013_SP1"/>
+        <t:ExchangeImpersonation>
+            <t:ConnectingSID>
+                <t:SmtpAddress>%s</t:SmtpAddress>
+            </t:ConnectingSID>
+        </t:ExchangeImpersonation>
+    </soap:Header>
+    <soap:Body>
+        <m:GetItem>
+            <m:ItemShape>
+                <t:BaseShape>IdOnly</t:BaseShape>
+                <t:AdditionalProperties>
+                    <t:FieldURI FieldURI="calendar:UID"/>
+                    <t:FieldURI FieldURI="item:Subject"/>
+                    <t:FieldURI FieldURI="item:DateTimeReceived"/>
+                    <t:FieldURI FieldURI="calendar:Start"/>
+                    <t:FieldURI FieldURI="calendar:End"/>
+                    <t:FieldURI FieldURI="calendar:Organizer"/>
+                    <t:FieldURI FieldURI="calendar:CalendarItemType"/>
+                </t:AdditionalProperties>
+            </m:ItemShape>
+            <m:ItemIds>
+                <t:OccurrenceItemId RecurringMasterId="%s" InstanceIndex="%d" />
+            </m:ItemIds>
+        </m:GetItem>
+    </soap:Body>
+</soap:Envelope>`, roomEmail, eventID, instanceIndex)
+
+		responseXML, err := h.sendRequest(requestXML)
+		if err != nil {
+			return nil, fmt.Errorf("expanding recurrence: %v", err)
+		}
+		// First, try to unmarshal into SOAPFault to see if there was an error.
+		var soapFault soapFault
+		if err := xml.Unmarshal(responseXML, &soapFault); err == nil && soapFault.Body.Fault.FaultCode != "" {
+			return nil, fmt.Errorf("SOAP fault: %s - %s", soapFault.Body.Fault.Detail.ResponseCode, soapFault.Body.Fault.Detail.Message)
+		}
+
+		var response struct {
+			Body struct {
+				GetItemResponse struct {
+					ResponseMessages struct {
+						GetItemResponseMessage struct {
+							ResponseClass string `xml:"ResponseClass,attr"`
+							ResponseCode  string `xml:"ResponseCode"`
+							Items         struct {
+								CalendarItem calendarItem `xml:"CalendarItem"`
+							} `xml:"Items"`
+						} `xml:"GetItemResponseMessage"`
+					} `xml:"ResponseMessages"`
+				} `xml:"GetItemResponse"`
+			} `xml:"Body"`
+		}
+		if err := xml.Unmarshal(responseXML, &response); err != nil {
+			return nil, fmt.Errorf("unmarshaling XML: %v", err)
+		}
+
+		rm := response.Body.GetItemResponse.ResponseMessages.GetItemResponseMessage
+		if rm.ResponseCode == "ErrorCalendarOccurrenceIndexIsOutOfRecurrenceRange" {
+			// End of loop.
+			break
+		}
+		if rm.ResponseCode == "ErrorCalendarOccurrenceIsDeletedFromRecurrence" {
+			// This occurence was deleted, skip it.
+			continue
+		}
+		if rm.ResponseClass != "Success" {
+			return nil, fmt.Errorf("GetItem failed: %s", rm.ResponseCode)
+		}
+
+		item := rm.Items.CalendarItem
+		item.InstanceIndex = instanceIndex
+
+		items = append(items, item)
+	}
+
+	return items, nil
 }
 
 type Appointment struct {
@@ -550,7 +662,7 @@ type appointmentCreated struct {
 	} `xml:"Body"`
 }
 
-func (h *EWSHelper) CancelEvent(event model.UnifiedBooking) error {
+func (h *EWSHelper) CancelEvent(event syncmodel.BookingGroup) error {
 	// Find the organizer's eventId and changeKey using the UID
 	eventID, changeKey, err := h.findEventUIDInMailbox(event.OrganizerEmail, event.ExchangeUID)
 	if err != nil {
@@ -578,6 +690,74 @@ func (h *EWSHelper) CancelEvent(event model.UnifiedBooking) error {
     </m:CreateItem>
   </soap:Body>
 </soap:Envelope>`, event.OrganizerEmail, eventID, changeKey)
+
+	responseXML, err := h.sendRequest(requestXML)
+	if err != nil {
+		return fmt.Errorf("requesting cancel event: %w", err)
+	}
+
+	// First, try to unmarshal into SOAPFault to see if there was an error.
+	var soapFault soapFault
+	if err := xml.Unmarshal(responseXML, &soapFault); err == nil && soapFault.Body.Fault.FaultCode != "" {
+		if soapFault.Body.Fault.FaultCode == "ErrorNonExistentMailbox" {
+			return ErrNonExistentMailbox
+		}
+		return fmt.Errorf("SOAP fault: %s - %s", soapFault.Body.Fault.Detail.ResponseCode, soapFault.Body.Fault.Detail.Message)
+	}
+
+	var response struct {
+		XMLName xml.Name `xml:"Envelope"`
+		Body    struct {
+			CreateItemResponse struct {
+				ResponseMessages struct {
+					CreateItemResponseMessage struct {
+						ResponseClass string `xml:"ResponseClass,attr"`
+						ResponseCode  string `xml:"ResponseCode"`
+					} `xml:"CreateItemResponseMessage"`
+				} `xml:"ResponseMessages"`
+			} `xml:"CreateItemResponse"`
+		} `xml:"Body"`
+	}
+
+	if err := xml.Unmarshal(responseXML, &response); err != nil {
+		return fmt.Errorf("unmarshalling XML: %v", err)
+	}
+
+	responseClass := response.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.ResponseClass
+	responseCode := response.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.ResponseCode
+
+	if responseClass != "Success" || responseCode != "NoError" {
+		return fmt.Errorf("cancelling event resulted in %s - %s. Response: %s", responseClass, responseCode, string(responseXML))
+	}
+
+	return nil
+}
+
+func (h *EWSHelper) CancelOccurrence(group syncmodel.BookingGroup, occurrence syncmodel.BookingOccurrence) error {
+	// Find the organizer's eventId using the UID
+	eventID, _, err := h.findEventUIDInMailbox(group.OrganizerEmail, group.ExchangeUID)
+	if err != nil {
+		return fmt.Errorf("finding organizer event ID: %v", err)
+	}
+
+	requestXML := fmt.Sprintf(`
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+      <t:RequestServerVersion Version="Exchange2013_SP1"/>
+      <t:ExchangeImpersonation>
+          <t:ConnectingSID>
+              <t:SmtpAddress>%s</t:SmtpAddress>
+          </t:ConnectingSID>
+      </t:ExchangeImpersonation>
+  </soap:Header>
+  <soap:Body>
+    <m:DeleteItem DeleteType="MoveToDeletedItems" SendMeetingCancellations="SendToAllAndSaveCopy">
+      <m:ItemIds>
+        <t:OccurrenceItemId RecurringMasterId="%s" InstanceIndex="%d" />
+      </m:ItemIds>
+    </m:DeleteItem>
+  </soap:Body>
+</soap:Envelope>`, group.OrganizerEmail, eventID, occurrence.InstanceIndex)
 
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
@@ -652,7 +832,6 @@ func (h *EWSHelper) getUIDFromItemId(itemMailbox string, itemId string) (string,
 		return "", fmt.Errorf("sending SOAP request failed: %v", err)
 	}
 
-	// Define a struct to unmarshal the response XML
 	var response struct {
 		Body struct {
 			GetItemResponse struct {

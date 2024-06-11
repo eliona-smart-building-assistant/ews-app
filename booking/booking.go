@@ -5,9 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"ews/appdb"
 	"ews/conf"
-	"ews/model"
+	syncmodel "ews/model/sync"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/eliona-smart-building-assistant/go-utils/log"
 	"github.com/gorilla/websocket"
-	"github.com/volatiletech/null/v8"
 )
 
 const clientReference = "ews-app"
@@ -44,7 +42,7 @@ func (c *client) get(elionaID int32) (bookingResponse, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		log.Error("booking", "booking %v not found while cancelling", elionaID)
+		return bookingResponse{}, fmt.Errorf(resp.Status)
 	} else if resp.StatusCode != http.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -61,36 +59,42 @@ func (c *client) get(elionaID int32) (bookingResponse, error) {
 	return respBody, nil
 }
 
-func (c *client) Book(bookings map[string]model.UnifiedBooking) error {
-	for _, booking := range bookings {
-		convertedBooking := bookingRequest{
-			BookingID:   booking.ElionaID,
-			AssetIds:    booking.GetAssetIDs(),
-			OrganizerID: booking.OrganizerEmail,
-			Start:       booking.Start,
-			End:         booking.End,
+func (c *client) Book(groups map[string]syncmodel.BookingGroup) error {
+	for _, group := range groups {
+		var convertedBookings []bookingRequest
+		for _, booking := range group.Occurrences {
+			convertedBookings = append(convertedBookings, bookingRequest{
+				AssetIds:    booking.GetAssetIDs(),
+				OrganizerID: group.OrganizerEmail,
+				Start:       booking.Start,
+				End:         booking.End,
+			})
 		}
-		responseBooking, err := c.book(convertedBooking)
+		convertedGroup := bookingGroupRequest{
+			GroupID:     group.ElionaID,
+			Occurrences: convertedBookings,
+		}
+		responseGroup, err := c.book(convertedGroup)
 		if err != nil {
 			return err
 		}
+		group.ElionaID = responseGroup.Id
+		for i, responseBooking := range responseGroup.Bookings {
+			// This works because the order of the bookings in response is kept
+			// same as in the request.
+			group.Occurrences[i].ElionaID = responseBooking.Id
+		}
 
-		dbUB := appdb.UnifiedBooking{
-			ExchangeUID:              null.StringFrom(booking.ExchangeUID),
-			ExchangeOrganizerMailbox: null.StringFrom(booking.OrganizerEmail),
-			BookingID:                null.Int32From(responseBooking.Id),
-		}
-		var dbRoomBookings []appdb.RoomBooking
-		for _, specificEvent := range booking.RoomBookings {
-			dbRoomBookings = append(dbRoomBookings, appdb.RoomBooking{
-				ExchangeID: null.StringFrom(specificEvent.ExchangeIDInResourceMailbox),
-			})
-		}
-		if err := conf.UpsertBooking(dbUB, dbRoomBookings); err != nil {
-			return fmt.Errorf("upserting booking id %v: %v", dbUB.BookingID, err)
+		if err := conf.UpsertBooking(group); err != nil {
+			return fmt.Errorf("upserting group id %v: %v", group.ElionaID, err)
 		}
 	}
 	return nil
+}
+
+type bookingGroupRequest struct {
+	GroupID     int32            `json:"groupID,omitempty"`
+	Occurrences []bookingRequest `json:"occurrences"`
 }
 
 type bookingRequest struct {
@@ -99,6 +103,11 @@ type bookingRequest struct {
 	OrganizerID string    `json:"organizerID"`
 	Start       time.Time `json:"start"`
 	End         time.Time `json:"end"`
+}
+
+type bookingGroupResponse struct {
+	Id       int32             `json:"id"`
+	Bookings []bookingResponse `json:"bookings"`
 }
 
 type bookingResponse struct {
@@ -110,60 +119,64 @@ type bookingResponse struct {
 	OrganizerName string    `json:"organizerName"`
 }
 
-func (c *client) book(bookings bookingRequest) (bookingResponse, error) {
+func (c *client) book(bookings bookingGroupRequest) (bookingGroupResponse, error) {
 	body, err := json.Marshal(bookings)
 	if err != nil {
-		return bookingResponse{}, err
+		return bookingGroupResponse{}, err
 	}
 
 	v := url.Values{}
 	v.Add("clientReference", clientReference)
-	resp, err := http.Post(c.BaseURL+"/bookings?"+v.Encode(), "application/json", bytes.NewBuffer(body))
+	resp, err := http.Post(c.BaseURL+"/bookings/group?"+v.Encode(), "application/json", bytes.NewBuffer(body))
 	if err != nil {
-		return bookingResponse{}, err
+		return bookingGroupResponse{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return bookingResponse{}, fmt.Errorf("error %v returned: failed to read response body: %v", resp.StatusCode, err)
+			return bookingGroupResponse{}, fmt.Errorf("error %v returned: failed to read response body: %v", resp.StatusCode, err)
 		}
-		return bookingResponse{}, fmt.Errorf("unexpected status code %d: %v", resp.StatusCode, string(bodyBytes))
+		return bookingGroupResponse{}, fmt.Errorf("unexpected status code %d: %v", resp.StatusCode, string(bodyBytes))
 	}
 
-	var respBody bookingResponse
+	var respBody bookingGroupResponse
 	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
-		return bookingResponse{}, fmt.Errorf("error parsing response body: %v", err)
+		return bookingGroupResponse{}, fmt.Errorf("error parsing response body: %v", err)
 	}
 
 	return respBody, nil
 }
 
-func (c *client) CancelSlice(bookings []model.RoomBooking) error {
+func (c *client) CancelSlice(bookings []syncmodel.RoomBooking) error {
 	for _, b := range bookings {
-		if b.UnifiedBooking == nil {
+		if b.BookingOccurrence == nil {
 			return fmt.Errorf("unifiedBooking is nil")
 		}
-		elionaBooking, err := c.get(b.UnifiedBooking.ElionaID)
+		elionaBooking, err := c.get(b.BookingOccurrence.ElionaID)
 		if err != nil {
-			return fmt.Errorf("getting eliona booking for id %v: %v", b.UnifiedBooking.ElionaID, err)
+			return fmt.Errorf("getting eliona booking for id %v: %v", b.BookingOccurrence.ElionaID, err)
 		}
 		elionaBooking.AssetIds = removeElement(elionaBooking.AssetIds, b.AssetID)
 		if len(elionaBooking.AssetIds) != 0 {
 			// We don't want to cancel the whole event in Eliona when just part of the rooms are removed from the event.
-			_, err := c.book(bookingRequest{
-				BookingID:   elionaBooking.Id,
-				Start:       elionaBooking.Start,
-				End:         elionaBooking.End,
-				AssetIds:    elionaBooking.AssetIds,
-				OrganizerID: elionaBooking.OrganizerID,
+			_, err := c.book(bookingGroupRequest{
+				Occurrences: []bookingRequest{
+					{
+						BookingID:   elionaBooking.Id,
+						Start:       elionaBooking.Start,
+						End:         elionaBooking.End,
+						AssetIds:    elionaBooking.AssetIds,
+						OrganizerID: elionaBooking.OrganizerID,
+					},
+				},
 			})
 			if err != nil {
 				return fmt.Errorf("updating booking %v: %v", elionaBooking.Id, err)
 			}
 		} else {
-			err := c.Cancel(b.UnifiedBooking.ElionaID, "cancelled")
+			err := c.Cancel(b.BookingOccurrence.ElionaID, "cancelled")
 			if err != nil {
 				return fmt.Errorf("cancelling booking %v: %v", elionaBooking.Id, err)
 			}
@@ -233,6 +246,11 @@ func (c *client) subscribeBookings(assetIDs []int) (*websocket.Conn, error) {
 	return conn, nil
 }
 
+type BookingGroup struct {
+	Id       int32     `json:"id,omitempty"`
+	Bookings []Booking `json:"bookings,omitempty"`
+}
+
 type Booking struct {
 	ID          int32
 	AssetIds    []int32   `json:"assetIds"`
@@ -242,13 +260,13 @@ type Booking struct {
 	Cancelled   bool      `json:"cancelled"`
 }
 
-func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan model.UnifiedBooking, error) {
+func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan syncmodel.BookingGroup, error) {
 	conn, err := c.subscribeBookings(assetIDs)
 	if err != nil {
 		return nil, err
 	}
 	log.Debug("eliona-booking", "Subscribed")
-	bookingsChan := make(chan model.UnifiedBooking)
+	bookingsChan := make(chan syncmodel.BookingGroup)
 
 	go func() {
 		defer close(bookingsChan)
@@ -280,26 +298,39 @@ func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan 
 				return
 			}
 
-			var booking Booking
-			err = json.Unmarshal(message, &booking)
-			if err != nil {
-				log.Error("eliona-booking", "Error unmarshaling booking: %v", err)
+			var bookingGroup BookingGroup
+			if err = json.Unmarshal(message, &bookingGroup); err != nil {
+				log.Error("eliona-booking", "Error unmarshaling bookingGroup: %v", err)
 				continue // Skip this message and continue listening
 			}
 
-			roomBookings := make([]model.RoomBooking, len(booking.AssetIds))
-			for i, assetID := range booking.AssetIds {
-				roomBookings[i] = model.RoomBooking{
-					AssetID: assetID,
+			organizer := ""
+			occurrences := make([]syncmodel.BookingOccurrence, 0, len(bookingGroup.Bookings))
+			for _, booking := range bookingGroup.Bookings {
+				roomBookings := make([]syncmodel.RoomBooking, 0, len(booking.AssetIds))
+				for i, assetID := range booking.AssetIds {
+					roomBookings[i] = syncmodel.RoomBooking{
+						AssetID: assetID,
+					}
+				}
+				occurrences = append(occurrences, syncmodel.BookingOccurrence{
+					ElionaID:     booking.ID,
+					RoomBookings: roomBookings,
+					Start:        booking.Start,
+					End:          booking.End,
+					Cancelled:    booking.Cancelled,
+				})
+				if organizer == "" {
+					organizer = booking.OrganizerID
+				} else if organizer != booking.OrganizerID {
+					log.Error("eliona-booking", "received booking group with different organizers. A: %s B: %s", organizer, booking.OrganizerID)
+					continue
 				}
 			}
-			bookingsChan <- model.UnifiedBooking{
-				ElionaID:       booking.ID,
-				RoomBookings:   roomBookings,
-				OrganizerEmail: booking.OrganizerID,
-				Start:          booking.Start,
-				End:            booking.End,
-				Cancelled:      booking.Cancelled,
+			bookingsChan <- syncmodel.BookingGroup{
+				ElionaID:       bookingGroup.Id,
+				Occurrences:    occurrences,
+				OrganizerEmail: organizer,
 			}
 		}
 	}()

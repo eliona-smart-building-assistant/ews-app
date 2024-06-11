@@ -22,6 +22,7 @@ import (
 	"errors"
 	"ews/apiserver"
 	"ews/appdb"
+	syncmodel "ews/model/sync"
 	"fmt"
 
 	"github.com/eliona-smart-building-assistant/go-eliona/frontend"
@@ -325,82 +326,121 @@ func PersistSyncState(assetID int64, syncState string) error {
 	return err
 }
 
-func GetUnifiedBookingByExchangeID(exchangeID string) (appdb.UnifiedBooking, error) {
-	booking, err := appdb.UnifiedBookings(
-		qm.InnerJoin("ews.room_booking rb on rb.unified_booking_id = unified_booking.id"),
+func GetBookingGroupByExchangeID(exchangeID string) (appdb.BookingGroup, error) {
+	booking, err := appdb.BookingGroups(
+		qm.InnerJoin("ews.booking_occurrence bo on bo.booking_group_id = ews.booking_group.id"),
+		qm.InnerJoin("ews.room_booking rb on rb.booking_occurrence_id = bo.id"),
 		qm.Where("rb.exchange_id = ?", exchangeID),
 	).OneG(context.Background())
 	if errors.Is(err, sql.ErrNoRows) {
-		return appdb.UnifiedBooking{}, ErrNotFound
+		return appdb.BookingGroup{}, ErrNotFound
 	} else if err != nil {
-		return appdb.UnifiedBooking{}, fmt.Errorf("fetching booking from database: %v", err)
+		return appdb.BookingGroup{}, fmt.Errorf("fetching group from database: %v", err)
 	}
 	return *booking, nil
 }
 
-func GetUnifiedBookingByExchangeUID(exchangeUID string) (appdb.UnifiedBooking, error) {
-	booking, err := appdb.UnifiedBookings(
-		appdb.UnifiedBookingWhere.ExchangeUID.EQ(null.StringFrom(exchangeUID)),
+func GetBookingGroupByExchangeUID(exchangeUID string) (appdb.BookingGroup, error) {
+	booking, err := appdb.BookingGroups(
+		appdb.BookingGroupWhere.ExchangeUID.EQ(null.StringFrom(exchangeUID)),
 	).OneG(context.Background())
 	if errors.Is(err, sql.ErrNoRows) {
-		return appdb.UnifiedBooking{}, ErrNotFound
+		return appdb.BookingGroup{}, ErrNotFound
 	} else if err != nil {
-		return appdb.UnifiedBooking{}, fmt.Errorf("fetching booking from database: %v", err)
+		return appdb.BookingGroup{}, fmt.Errorf("fetching group from database: %v", err)
 	}
 	return *booking, nil
 }
 
-func GetUnifiedBookingByElionaID(bookingID int32) (appdb.UnifiedBooking, error) {
-	booking, err := appdb.UnifiedBookings(
-		appdb.UnifiedBookingWhere.BookingID.EQ(null.Int32From(bookingID)),
+func GetBookingGroupByElionaID(groupID int32) (appdb.BookingGroup, error) {
+	booking, err := appdb.BookingGroups(
+		appdb.BookingGroupWhere.ElionaGroupID.EQ(null.Int32From(groupID)),
 	).OneG(context.Background())
 	if errors.Is(err, sql.ErrNoRows) {
-		return appdb.UnifiedBooking{}, ErrNotFound
+		return appdb.BookingGroup{}, ErrNotFound
 	} else if err != nil {
-		return appdb.UnifiedBooking{}, fmt.Errorf("fetching booking from database: %v", err)
+		return appdb.BookingGroup{}, fmt.Errorf("fetching group %d from database: %v", groupID, err)
 	}
 	return *booking, nil
 }
 
-func UpsertBooking(unifiedBooking appdb.UnifiedBooking, roomBookings []appdb.RoomBooking) error {
-	ctx := context.Background()
-	tx, err := boil.BeginTx(ctx, nil)
+func GetBookingOccurrenceByElionaID(occurrenceID int32) (appdb.BookingOccurrence, error) {
+	booking, err := appdb.BookingOccurrences(
+		appdb.BookingOccurrenceWhere.ElionaBookingID.EQ(null.Int32From(occurrenceID)),
+	).OneG(context.Background())
+	if errors.Is(err, sql.ErrNoRows) {
+		return appdb.BookingOccurrence{}, ErrNotFound
+	} else if err != nil {
+		return appdb.BookingOccurrence{}, fmt.Errorf("fetching occurrence %d from database: %v", occurrenceID, err)
+	}
+	return *booking, nil
+}
+
+func GetBookingOccurrencesByGroupID(groupID int64) ([]appdb.BookingOccurrence, error) {
+	bookings, err := appdb.BookingOccurrences(
+		appdb.BookingOccurrenceWhere.BookingGroupID.EQ(groupID),
+	).AllG(context.Background())
 	if err != nil {
-		return fmt.Errorf("creating transaction: %v", err)
+		return nil, fmt.Errorf("fetching occurrence from group %d from database: %v", groupID, err)
 	}
-	defer tx.Rollback()
+	var result []appdb.BookingOccurrence
+	for _, booking := range bookings {
+		result = append(result, *booking)
+	}
+	return result, nil
+}
 
-	if err := unifiedBooking.UpsertG(
+func UpsertBooking(modelGroup syncmodel.BookingGroup) error {
+	ctx := context.Background()
+
+	dbGroup := appdb.BookingGroup{
+		ExchangeUID:              null.StringFrom(modelGroup.ExchangeUID),
+		ExchangeOrganizerMailbox: null.StringFrom(modelGroup.OrganizerEmail),
+		ElionaGroupID:            null.Int32From(modelGroup.ElionaID),
+	}
+
+	if err := dbGroup.UpsertG(
 		ctx, true,
-		[]string{appdb.UnifiedBookingColumns.ExchangeUID},
-		boil.Whitelist(appdb.UnifiedBookingColumns.BookingID),
+		[]string{appdb.BookingGroupColumns.ExchangeUID},
+		boil.Whitelist(appdb.BookingGroupColumns.ElionaGroupID),
 		boil.Infer(),
 	); err != nil {
-		return fmt.Errorf("upserting unified booking: %v", err)
+		return fmt.Errorf("upserting group: %v", err)
+	}
+	if err := dbGroup.ReloadG(ctx); err != nil {
+		return fmt.Errorf("reloading group: %v", err)
 	}
 
-	storedUnifiedBooking, err := appdb.UnifiedBookings(
-		appdb.UnifiedBookingWhere.ExchangeUID.EQ(unifiedBooking.ExchangeUID),
-	).One(ctx, tx)
-	if err != nil {
-		return fmt.Errorf("fetching unified booking ID: %v", err)
-	}
-
-	for _, roomBooking := range roomBookings {
-		roomBooking.UnifiedBookingID = storedUnifiedBooking.ID
-		// Just a hacky way to do "ON CONFLICT DO NOTHING"
-		if err := roomBooking.UpsertG(
+	for _, occurrence := range modelGroup.Occurrences {
+		bookingOccurrence := appdb.BookingOccurrence{
+			BookingGroupID:        dbGroup.ID,
+			ExchangeInstanceIndex: int32(occurrence.InstanceIndex),
+			ElionaBookingID:       null.Int32From(occurrence.ElionaID),
+		}
+		if err := bookingOccurrence.UpsertG(
 			ctx, true,
-			[]string{appdb.RoomBookingColumns.ExchangeID},
-			boil.Whitelist(appdb.RoomBookingColumns.ExchangeID),
+			[]string{appdb.BookingOccurrenceColumns.BookingGroupID, appdb.BookingOccurrenceColumns.ExchangeInstanceIndex},
+			boil.Whitelist(appdb.BookingOccurrenceColumns.ElionaBookingID),
 			boil.Infer()); err != nil {
-			return fmt.Errorf("upserting room booking: %v", err)
+			return fmt.Errorf("upserting occurrence: %v", err)
+		}
+		if err := bookingOccurrence.ReloadG(ctx); err != nil {
+			return fmt.Errorf("reloading occurrence: %v", err)
+		}
+		for _, specificEvent := range occurrence.RoomBookings {
+			roomBooking := appdb.RoomBooking{
+				BookingOccurrenceID: bookingOccurrence.ID,
+				ExchangeID:          null.StringFrom(specificEvent.ExchangeIDInResourceMailbox),
+			}
+			// Just a hacky way to do "ON CONFLICT DO NOTHING"
+			if err := roomBooking.UpsertG(
+				ctx, true,
+				[]string{appdb.RoomBookingColumns.ExchangeID},
+				boil.Whitelist(appdb.RoomBookingColumns.ExchangeID),
+				boil.Infer()); err != nil {
+				return fmt.Errorf("upserting room booking: %v", err)
+			}
 		}
 	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing transaction: %v", err)
-	}
-
 	return nil
 }
