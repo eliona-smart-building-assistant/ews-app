@@ -390,6 +390,35 @@ func GetBookingOccurrencesByGroupID(groupID int64) ([]appdb.BookingOccurrence, e
 	return result, nil
 }
 
+func GetBookingOccurrenceByGroupAndIndex(groupID int64, instanceIndex int32) (appdb.BookingOccurrence, error) {
+	booking, err := appdb.BookingOccurrences(
+		appdb.BookingOccurrenceWhere.BookingGroupID.EQ(groupID),
+		appdb.BookingOccurrenceWhere.ExchangeInstanceIndex.EQ(instanceIndex),
+	).OneG(context.Background())
+	if errors.Is(err, sql.ErrNoRows) {
+		return appdb.BookingOccurrence{}, ErrNotFound
+	} else if err != nil {
+		return appdb.BookingOccurrence{}, fmt.Errorf("fetching occurrence from group %d index %d from database: %v", groupID, instanceIndex, err)
+	}
+
+	return *booking, nil
+}
+
+func GetBookingOccurrencesByGroupIDWithoutExceptions(groupID int64, exceptIDs []int64) ([]appdb.BookingOccurrence, error) {
+	bookings, err := appdb.BookingOccurrences(
+		appdb.BookingOccurrenceWhere.BookingGroupID.EQ(groupID),
+		appdb.BookingOccurrenceWhere.ID.NIN(exceptIDs),
+	).AllG(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("fetching occurrences from group %d from database: %v", groupID, err)
+	}
+	var result []appdb.BookingOccurrence
+	for _, booking := range bookings {
+		result = append(result, *booking)
+	}
+	return result, nil
+}
+
 func UpsertBooking(modelGroup syncmodel.BookingGroup) error {
 	ctx := context.Background()
 

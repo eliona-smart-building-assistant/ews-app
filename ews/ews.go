@@ -387,7 +387,6 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
 
 		items := []calendarItem{*item}
 		if change.CalendarItem.CalendarItemType == "RecurringMaster" {
-			fmt.Println(item)
 			recurringItems, err := h.expandRecurrence(item.ItemId.Id, roomEmail)
 			if err != nil {
 				return nil, nil, nil, syncState, fmt.Errorf("expanding recurrence for event %v: %v", item.ItemId.Id, err)
@@ -411,6 +410,7 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
 				}},
 			})
 		}
+		updated = append(updated, group)
 	}
 
 	for _, change := range changes.Delete {

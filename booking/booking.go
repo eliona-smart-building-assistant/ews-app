@@ -64,10 +64,12 @@ func (c *client) Book(groups map[string]syncmodel.BookingGroup) error {
 		var convertedBookings []bookingRequest
 		for _, booking := range group.Occurrences {
 			convertedBookings = append(convertedBookings, bookingRequest{
+				BookingID:   booking.ElionaID,
 				AssetIds:    booking.GetAssetIDs(),
 				OrganizerID: group.OrganizerEmail,
 				Start:       booking.Start,
 				End:         booking.End,
+				Cancelled:   booking.Cancelled,
 			})
 		}
 		convertedGroup := bookingGroupRequest{
@@ -103,6 +105,7 @@ type bookingRequest struct {
 	OrganizerID string    `json:"organizerID"`
 	Start       time.Time `json:"start"`
 	End         time.Time `json:"end"`
+	Cancelled   bool      `json:"cancelled"`
 }
 
 type bookingGroupResponse struct {

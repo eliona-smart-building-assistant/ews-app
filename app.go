@@ -175,7 +175,7 @@ func collectResources(config apiserver.Configuration) error {
 
 		for i := range updated {
 			a := updated[i]
-			a, err := assignElionaGroupID(a)
+			a, err := assignElionaIDs(a)
 			if err != nil {
 				return err
 			}
@@ -190,7 +190,7 @@ func collectResources(config apiserver.Configuration) error {
 		}
 		for i := range new {
 			a := new[i]
-			a, err := assignElionaGroupID(a)
+			a, err := assignElionaIDs(a)
 			if err != nil {
 				return err
 			}
@@ -270,7 +270,7 @@ func discoverNewAssets(ewsHelper *ews.EWSHelper, config apiserver.Configuration)
 	return nil
 }
 
-func assignElionaGroupID(a syncmodel.BookingGroup) (syncmodel.BookingGroup, error) {
+func assignElionaIDs(a syncmodel.BookingGroup) (syncmodel.BookingGroup, error) {
 	booking, err := conf.GetBookingGroupByExchangeUID(a.ExchangeUID)
 	if err != nil && !errors.Is(err, conf.ErrNotFound) {
 		log.Error("conf", "getting booking for exchange UID %s: %v", a.ExchangeUID, err)
@@ -284,6 +284,36 @@ func assignElionaGroupID(a syncmodel.BookingGroup) (syncmodel.BookingGroup, erro
 		// Booking not yet synced to Eliona
 		return a, nil
 	}
+
+	var occurrencesIncluded []int64
+	for i, occurrence := range a.Occurrences {
+		occurrence, err := conf.GetBookingOccurrenceByGroupAndIndex(booking.ID, int32(occurrence.InstanceIndex))
+		if err != nil && !errors.Is(err, conf.ErrNotFound) {
+			log.Error("conf", "getting booking for exchange UID %s: %v", a.ExchangeUID, err)
+			return syncmodel.BookingGroup{}, err
+		} else if errors.Is(err, conf.ErrNotFound) {
+			// Booking is new
+			return a, nil
+		}
+		if occurrence.ElionaBookingID.Valid {
+			a.Occurrences[i].ElionaID = occurrence.ElionaBookingID.Int32
+			occurrencesIncluded = append(occurrencesIncluded, occurrence.ID)
+		}
+	}
+
+	cancelledOccurrences, err := conf.GetBookingOccurrencesByGroupIDWithoutExceptions(booking.ID, occurrencesIncluded)
+	if err != nil {
+		return a, fmt.Errorf("inferring cancelled occurrences: %v", err)
+	}
+	for _, cancelledOccurrence := range cancelledOccurrences {
+		if cancelledOccurrence.ElionaBookingID.Valid {
+			a.Occurrences = append(a.Occurrences, syncmodel.BookingOccurrence{
+				ElionaID:  cancelledOccurrence.ElionaBookingID.Int32,
+				Cancelled: true,
+			})
+		}
+	}
+
 	a.ElionaID = booking.ElionaGroupID.Int32
 	return a, nil
 }
