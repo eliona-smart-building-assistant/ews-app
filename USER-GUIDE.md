@@ -163,7 +163,9 @@ When creating or deleting a booking from Eliona, the booking will be visible in 
 
 ## Recurring events
 
-For technical reasons, recurring events are not yet supported.
+Recurring events can be created in Outlook. All occurrences will be passed to Eliona and be kept synchronized. Users in Eliona can cancel specific occurrences.
+
+Keep in mind that there is a limit of how far in advance can the resources be booked. The limit is configurable in Exchange administration for the resources.
 
 ## Booking multiple assets
 
