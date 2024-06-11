@@ -58,8 +58,8 @@ func initialization() {
 		app.ExecSqlFile("conf/000200.sql"),
 	)
 
-	// Recurring events for v0.3.0
-	app.Patch(conn, app.AppName(), "000300",
+	// Recurring events for v0.4.0
+	app.Patch(conn, app.AppName(), "000400",
 		app.ExecSqlFile("conf/000300.sql"),
 	)
 }
