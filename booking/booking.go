@@ -307,7 +307,7 @@ func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan 
 				continue // Skip this message and continue listening
 			}
 
-			organizer := ""
+			organizer := "" // used to check whether all occurrences have the same organizer
 			occurrences := make([]syncmodel.BookingOccurrence, 0, len(bookingGroup.Bookings))
 			for _, booking := range bookingGroup.Bookings {
 				roomBookings := make([]syncmodel.RoomBooking, len(booking.AssetIds))
