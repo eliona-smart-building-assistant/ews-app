@@ -4,7 +4,7 @@
 
 > The Exchange app provides synchronization of Eliona asset bookings with Microsoft Exchange servers.
 
-Create a room list in Exchange, have these rooms available as bookable assets in Eliona and allow users book the rooms directly from Eliona.
+This app is an extension to [Booking app](https://doc.eliona.io/collection/eliona-english/eliona-apps/apps/booking). Create a room list in Exchange, have these rooms available as bookable assets in Eliona and allow users book the rooms directly from Eliona.
 
 ## Configuring Exchange Web Services (EWS)
 
@@ -18,7 +18,7 @@ To configure EWS with Exchange app, follow the steps below to register it in Mic
 
 #### 1. Register the Application
 
-Navigate to **Entra** and select **App registrations**, then choose **Register app**. You will need to enter the application details.
+Navigate to **Entra** and select **App registrations**, then choose **New registration**. You will need to enter the application details.
 
 #### 2. Configuring Permissions
 
@@ -27,7 +27,7 @@ Navigate to **Entra** and select **App registrations**, then choose **Register a
 For application-level authentication that supports impersonation:
 
 - Go to **API permissions**.
-- Add the permission `full_access_as_app` and grant admin consent.
+- Add the permission `full_access_as_app` (or use the manifest excerpt below) and **grant admin consent**.
 
 Here is an example of the required configuration in the application's manifest:
 
@@ -68,6 +68,10 @@ To configure impersonation and other settings that are not available through the
 $UserCredential = Get-Credential
 $Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://outlook.office365.com/powershell-liveid/ -Credential $UserCredential -Authentication Basic -AllowRedirection
 Import-PSSession $Session -DisableNameChecking
+```
+or
+```
+Connect-ExchangeOnline -UserPrincipalName serviceAccount
 ```
 
 2. **Assign Impersonation Rights**:
