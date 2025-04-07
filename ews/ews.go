@@ -51,13 +51,12 @@ type EWSHelper struct {
 }
 
 // NewEWSHelper creates a new instance of EWSHelper with OAuth or NTLM authentication based on the provided configuration
-func NewEWSHelper(config apiserver.Configuration, impersonationUser string) *EWSHelper {
+func NewEWSHelper(config apiserver.Configuration) (*EWSHelper, error) {
 	var httpClient *http.Client
 	var ewsURL string
-	var username, password string
 
 	if filled(config.ClientId) && filled(config.ClientSecret) && filled(config.TenantId) {
-		// Use OAuth
+		// OAuth for Exchange Online
 		oauth2Config := clientcredentials.Config{
 			ClientID:     *config.ClientId,
 			ClientSecret: *config.ClientSecret,
@@ -67,27 +66,31 @@ func NewEWSHelper(config apiserver.Configuration, impersonationUser string) *EWS
 		httpClient = oauth2Config.Client(context.Background())
 		ewsURL = "https://outlook.office365.com/EWS/Exchange.asmx"
 	} else if filled(config.Username) && filled(config.Password) && filled(config.EwsURL) {
-		// Use NTLM
+		// NTLM for Hybrid Exchange (On-Premises)
+		ewsURL = *config.EwsURL
+
+		transport := &http.Transport{
+			DisableKeepAlives:     false,
+			IdleConnTimeout:       30 * time.Second,
+			ExpectContinueTimeout: 2 * time.Second,
+		}
+
 		httpClient = &http.Client{
 			Transport: ntlmssp.Negotiator{
-				RoundTripper: &http.Transport{},
+				RoundTripper: transport,
 			},
+			Timeout: 60 * time.Second, // Ensure requests don't hang indefinitely
 		}
-		ewsURL = *config.EwsURL
-		username = *config.Username
-		password = *config.Password
+
 	} else {
-		panic("Invalid configuration: either OAuth or NTLM credentials must be provided")
+		return nil, fmt.Errorf("invalid configuration: either OAuth or NTLM credentials must be provided")
 	}
 
 	return &EWSHelper{
 		Client:       httpClient,
 		EwsURL:       ewsURL,
-		username:     username,
-		password:     password,
-		serviceUser:  impersonationUser,
 		addressCache: make(map[string]string),
-	}
+	}, nil
 }
 
 func filled(s *string) bool {

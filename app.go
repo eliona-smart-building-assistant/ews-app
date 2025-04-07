@@ -65,8 +65,28 @@ func initialization() {
 }
 
 var once sync.Once
+var ewsHelpers sync.Map // Maps configuration ID to EWSHelper instance
+var ewsHelperMu sync.Mutex
 var mu sync.Mutex
 var resubscribeTrigger = make(chan struct{}, 1)
+
+func getEWSHelper(config apiserver.Configuration) (*ews.EWSHelper, error) {
+	ewsHelperMu.Lock()
+	defer ewsHelperMu.Unlock()
+
+	if helper, ok := ewsHelpers.Load(config.Id); ok {
+		return helper.(*ews.EWSHelper), nil
+	}
+
+	ewsHelper, err := ews.NewEWSHelper(config)
+	if err != nil {
+		log.Error("ews", "creating new helper: %v", err)
+		return nil, err
+	}
+
+	ewsHelpers.Store(config.Id, ewsHelper)
+	return ewsHelper, nil
+}
 
 func collectData() {
 	configs, err := conf.GetConfigs(context.Background())
@@ -134,9 +154,14 @@ func triggerResubscribe() {
 func collectResources(config apiserver.Configuration) error {
 	// Note: EWSHelper has an address cache and this resets it in each sync.
 	// If there is a need for optimization, create EWS helper only once per config.
-	ewsHelper := ews.NewEWSHelper(config, *config.ServiceUserUPN)
+	ewsHelper, err := getEWSHelper(config)
+	if err != nil {
+		log.Error("ews", "creating new helper: %v", err)
+		return err
+	}
 	if config.RoomListUPN != nil && *config.RoomListUPN != "" {
 		if err := discoverNewAssets(ewsHelper, config); err != nil {
+			log.Error("app", "discovering new assets: %v", err)
 			return err
 		}
 	}
@@ -365,7 +390,11 @@ outer:
 func cancelInEWS(group syncmodel.BookingGroup, config apiserver.Configuration) {
 	mu.Lock()
 	defer mu.Unlock()
-	ewsHelper := ews.NewEWSHelper(config, group.OrganizerEmail)
+	ewsHelper, err := getEWSHelper(config)
+	if err != nil {
+		log.Error("ews", "getting ews helper: %v", err)
+		return
+	}
 	booking, err := conf.GetBookingGroupByElionaID(group.ElionaID)
 	if err != nil {
 		log.Error("conf", "getting booking for Eliona ID %v: %v", group.ElionaID, err)
@@ -387,7 +416,11 @@ func cancelInEWS(group syncmodel.BookingGroup, config apiserver.Configuration) {
 func cancelOccurrenceInEWS(group syncmodel.BookingGroup, occurrence syncmodel.BookingOccurrence, config apiserver.Configuration) {
 	mu.Lock()
 	defer mu.Unlock()
-	ewsHelper := ews.NewEWSHelper(config, group.OrganizerEmail)
+	ewsHelper, err := getEWSHelper(config)
+	if err != nil {
+		log.Error("ews", "getting ews helper: %v", err)
+		return
+	}
 	booking, err := conf.GetBookingGroupByElionaID(group.ElionaID)
 	if err != nil {
 		log.Error("conf", "getting booking for Eliona ID %v: %v", group.ElionaID, err)
@@ -437,7 +470,11 @@ func createAppointment(assetsEmails []string, group syncmodel.BookingGroup, conf
 		group.OrganizerEmail = *config.ServiceUserUPN
 	}
 	// We want to book on behalf of the organizer, thus we need to create a helper for each booking.
-	ewsHelper := ews.NewEWSHelper(config, group.OrganizerEmail)
+	ewsHelper, err := getEWSHelper(config)
+	if err != nil {
+		log.Error("ews", "getting ews helper: %v", err)
+		return
+	}
 	app := ews.Appointment{
 		Organizer: group.OrganizerEmail,
 		Subject:   "Eliona booking",
