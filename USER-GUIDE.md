@@ -10,11 +10,17 @@ This app is an extension to [Booking app](https://doc.eliona.io/collection/elion
 
 Follow these steps for Exchange Online and hybrid installations having user emails stored in Exchange online. *For Exchange server local installation or hybrid configuration with local-first accounts, skip this chapter and just obtain NTLM credentials and EWS API URL*
 
-> Please note that EWS for Exchange Online will be deprected on October 1, 2026. This does not affect local exchange servers and hybrid configurations. More details on the retirement can be found on the [Exchange Team Blog](https://techcommunity.microsoft.com/t5/exchange-team-blog/retirement-of-exchange-web-services-in-exchange-online/ba-p/3924440)
+> Please note that EWS for Exchange Online will be deprecated on October 1, 2026. This does not affect local exchange servers and hybrid configurations. More details on the retirement can be found on the [Exchange Team Blog](https://techcommunity.microsoft.com/t5/exchange-team-blog/retirement-of-exchange-web-services-in-exchange-online/ba-p/3924440)
+
+#### Permissions Limitation
+
+This app is designed to work with very strict permission requirements. That means that the bookings created in Eliona will have a service user as an organizer and the booking user as an attendee. The users would then need special permissions to edit the bookings outside of Eliona (in Outlook).
+
+If your company policy allows delegation or impersonation rights in Exchange, please contact us to allow the app to act on behalf of the users.
 
 ### Registering the Application in Microsoft Entra
 
-To configure EWS with Exchange app, follow the steps below to register it in Microsoft Entra.
+To configure EWS with Exchange, follow the steps below to register it in Microsoft Entra.
 
 #### 1. Register the Application
 
@@ -22,12 +28,19 @@ Navigate to **Entra** and select **App registrations**, then choose **New regist
 
 #### 2. Configuring Permissions
 
-##### Application Authentication (Impersonation)
-
-For application-level authentication that supports impersonation:
+##### Application Authentication (OAuth)
 
 - Go to **API permissions**.
-- Add the permission `full_access_as_app` (or use the manifest excerpt below) and **grant admin consent**.
+- Add the permission `full_access_as_app` (or use the manifest excerpt below) and **grant admin consent**:
+
+1. **Click "Add a permission"**.
+2. Select **"APIs my organization uses"**.
+3. Search for **"Office 365 Exchange Online"**.
+4. Choose **"Application permissions"**.
+5. Scroll down and check the box for:
+   - **`full_access_as_app` (Use Exchange Web Services with full access to all mailboxes)**
+6. Click **Add permissions**.
+7. Click **Grant admin consent for <Your Organization>** to approve the permissions.
 
 Here is an example of the required configuration in the application's manifest:
 
@@ -53,48 +66,68 @@ For the application to authenticate:
 - Select **New client secret**.
 - Store the generated secret securely as it will be needed for the application to authenticate with Microsoft services.
 
-#### Configuring Impersonation via PowerShell
+#### 4. Configuring Application Access Policies via PowerShell
 
-To configure impersonation and other settings that are not available through the Entra portal, you must use PowerShell. Note that an online PowerShell console is unavailable without a subscription. Local PowerShell installations on Windows, Linux, or macOS can manage these configurations:
+To configure application access policies and other settings that are not available through the Entra portal, you must use PowerShell. Note that an online PowerShell console is unavailable without a subscription. Local PowerShell installations on Windows, Linux, or macOS can manage these configurations.
 
-- Ensure you have the necessary PowerShell modules installed for managing Exchange.
-- Use scripts to configure impersonation rights or other Exchange-specific settings.
+##### Restrict Access
+Since `full_access_as_app` gives access to **all mailboxes**, you should restrict access using **Application Access Policies** in Exchange Online PowerShell.
 
-#### PowerShell Scripts for Configuring Impersonation
+1. **Connect to Exchange Online**:
+   ```powershell
+   Connect-ExchangeOnline -UserPrincipalName admin@yourdomain.com
+   ```
+   
+2. **Create a Security Group for Room Mailboxes**:
+   ```powershell
+   New-DistributionGroup -Name "RoomBookingAppAccess" -PrimarySmtpAddress "roomaccess@yourdomain.com" -Type Security
+   ```
+   - Add only the **room mailboxes** that the app should access to this group.
 
-1. **Connect to Exchange Online PowerShell**:
+3. **Restrict the App’s Access to Only These Mailboxes**:
+   ```powershell
+   New-ApplicationAccessPolicy -AppId "<Application ID>" -PolicyScopeGroupId "RoomBookingAppAccess" -AccessRight RestrictAccess -Description "Restrict app to room calendars"
+   ```
+   - Replace `<Application ID>` with your Azure App’s **Application (Client) ID**.
 
-```powershell
-$UserCredential = Get-Credential
-$Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://outlook.office365.com/powershell-liveid/ -Credential $UserCredential -Authentication Basic -AllowRedirection
-Import-PSSession $Session -DisableNameChecking
-```
-or
-```
-Connect-ExchangeOnline -UserPrincipalName serviceAccount
-```
+4. **Verify Policy**:
+   ```powershell
+   Get-ApplicationAccessPolicy
+   ```
 
-2. **Assign Impersonation Rights**:
+### Configuring NTLM Authentication for Hybrid Exchange
 
-```powershell
-New-ManagementRoleAssignment –Name:impersonationAssignmentName –Role:ApplicationImpersonation –User:serviceAccount
-```
+For on-premises or hybrid Exchange environments, NTLM authentication must be used instead of OAuth. This requires configuring a service account with the correct permissions.
 
-3. **Verify Impersonation Rights**:
+#### 1. Grant EWS Access to the Service Account
 
-```powershell
-Get-ManagementRoleAssignment –RoleAssignee serviceAccount –Role ApplicationImpersonation –RoleAssigneeType User
-```
+Ensure that the service account (e.g., `service-account@yourdomain.com`) has access to EWS.
 
-Replace `serviceAccount` with the name of your service account or user that will perform impersonation.
+- **Check if EWS is enabled for the service account:**
+  ```powershell
+  Get-CASMailbox -Identity "service-account@yourdomain.com" | Select EwsEnabled
+  ```
+  - If `EwsEnabled` is `False`, enable it:
+    ```powershell
+    Set-CASMailbox -Identity "service-account@yourdomain.com" -EwsEnabled $true
+    ```
 
-#### Disconnecting the PowerShell Session
+#### 2. Assign Required Permissions for Room Mailboxes
 
-Remember to close the PowerShell session once your configuration tasks are completed:
+- **Assign Full Access (for room mailbox management):**
+  ```powershell
+  Add-MailboxPermission -Identity "room101@yourdomain.com" -User "service-account@yourdomain.com" -AccessRights FullAccess -InheritanceType All
+  ```
 
-```powershell
-Remove-PSSession $Session
-```
+- **Assign Editor Access to the Room’s Calendar Folder:**
+  ```powershell
+  Add-MailboxFolderPermission -Identity "room101@yourdomain.com:\Calendar" -User "service-account@yourdomain.com" -AccessRights Editor
+  ```
+
+- **If "Send As" permissions are needed:**
+  ```powershell
+  Add-RecipientPermission -Identity "room101@yourdomain.com" -Trustee "service-account@yourdomain.com" -AccessRights SendAs
+  ```
 
 ## Installation
 
