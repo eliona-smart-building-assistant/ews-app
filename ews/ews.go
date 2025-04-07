@@ -18,6 +18,7 @@ package ews
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
@@ -75,13 +76,15 @@ func NewEWSHelper(config apiserver.Configuration) (*EWSHelper, error) {
 			ExpectContinueTimeout: 2 * time.Second,
 		}
 
-		httpClient = &http.Client{
-			Transport: ntlmssp.Negotiator{
-				RoundTripper: transport,
-			},
-			Timeout: 60 * time.Second, // Ensure requests don't hang indefinitely
+		// Integrate NTLM negotiator
+		ntlmTransport := ntlmssp.Negotiator{
+			RoundTripper: transport,
 		}
 
+		httpClient = &http.Client{
+			Transport: &ntlmTransport,
+			Timeout:   60 * time.Second, // Ensure requests don't hang indefinitely
+		}
 	} else {
 		return nil, fmt.Errorf("invalid configuration: either OAuth or NTLM credentials must be provided")
 	}
@@ -89,6 +92,8 @@ func NewEWSHelper(config apiserver.Configuration) (*EWSHelper, error) {
 	return &EWSHelper{
 		Client:       httpClient,
 		EwsURL:       ewsURL,
+		username:     *config.Username,
+		password:     *config.Password,
 		addressCache: make(map[string]string),
 	}, nil
 }
@@ -114,6 +119,11 @@ func (h *EWSHelper) sendRequest(xmlBody string) ([]byte, error) {
 		return nil, fmt.Errorf("sending request: %w", err)
 	}
 	defer response.Body.Close()
+
+	if response.StatusCode >= 400 {
+		responseBody, _ := io.ReadAll(response.Body)
+		return nil, fmt.Errorf("sending request: %v, %v", response.Status, string(responseBody))
+	}
 
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
@@ -199,7 +209,7 @@ func (h *EWSHelper) GetAssets(config apiserver.Configuration) (model.Root, error
 
 	var env roomsEnvelope
 	if err := xml.Unmarshal(responseXML, &env); err != nil {
-		return model.Root{}, fmt.Errorf("unmarshaling XML: %v", err)
+		return model.Root{}, fmt.Errorf("unmarshaling XML: %v\nFull XML: %v", err, string(responseXML))
 	}
 
 	xmlRooms := env.Body.GetRoomsResponse.Rooms.Rooms
@@ -334,7 +344,7 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
 
 	var env roomEventsEnvelope
 	if err := xml.Unmarshal(responseXML, &env); err != nil {
-		return nil, nil, nil, syncState, fmt.Errorf("unmarshaling XML: %v", err)
+		return nil, nil, nil, syncState, fmt.Errorf("unmarshaling XML: %v\nFull XML: %v", err, string(responseXML))
 	}
 	changes := env.Body.SyncFolderItemsResponse.ResponseMessages.SyncFolderItemsResponseMessage.Changes
 	for _, change := range changes.Create {
@@ -512,7 +522,7 @@ func (h *EWSHelper) expandRecurrence(eventID, roomEmail string) ([]calendarItem,
 			} `xml:"Body"`
 		}
 		if err := xml.Unmarshal(responseXML, &response); err != nil {
-			return nil, fmt.Errorf("unmarshaling XML: %v", err)
+			return nil, fmt.Errorf("unmarshaling XML: %v\nFull XML: %v", err, string(responseXML))
 		}
 
 		rm := response.Body.GetItemResponse.ResponseMessages.GetItemResponseMessage
@@ -602,7 +612,7 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (exchangeUID stri
 
 	var env appointmentCreated
 	if err := xml.Unmarshal(responseXML, &env); err != nil {
-		return "", nil, fmt.Errorf("unmarshaling XML: %v", err)
+		return "", nil, fmt.Errorf("unmarshaling XML: %v\nFull XML: %v", err, string(responseXML))
 	}
 
 	organizerEventID := env.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.Items.CalendarItem.ItemId.ID
@@ -1009,7 +1019,7 @@ func (h *EWSHelper) resolveDN(name string) (string, error) {
 
 	var resp resolveNamesResponse
 	if err := xml.Unmarshal(responseXML, &resp); err != nil {
-		return "", fmt.Errorf("error unmarshaling XML from ResolveNames response: %v", err)
+		return "", fmt.Errorf("unmarshaling XML from ResolveNames response: %v\nFull XML: %v", err, string(responseXML))
 	}
 	responseMessages := resp.Body.ResolveNamesResponse.ResponseMessages.ResolveNamesResponseMessage
 	if len(responseMessages) != 1 {
