@@ -166,7 +166,7 @@ func collectResources(config apiserver.Configuration) error {
 		}
 	}
 
-	assets, err := conf.GetAssets()
+	assets, err := conf.GetAssets(*config.Id)
 	if err != nil {
 		log.Error("conf", "getting assets from DB: %v", err)
 		return err
@@ -345,7 +345,7 @@ func assignElionaIDs(a syncmodel.BookingGroup) (syncmodel.BookingGroup, error) {
 
 func listenForBookings(config apiserver.Configuration) {
 	baseURL := *config.BookingAppURL
-	assetIDs, err := conf.GetWatchedAssetIDs()
+	assetIDs, err := conf.GetWatchedAssetIDs(*config.Id)
 	if err != nil {
 		log.Error("conf", "getting list of assetIDs to watch: %v", err)
 		return

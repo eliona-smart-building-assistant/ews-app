@@ -268,8 +268,10 @@ func GetAssetEmailsByIds(assetIds []int32) ([]string, error) {
 	return result, nil
 }
 
-func GetAssets() ([]appdb.Asset, error) {
-	assets, err := appdb.Assets().AllG(context.Background())
+func GetAssets(configId int64) ([]appdb.Asset, error) {
+	assets, err := appdb.Assets(
+		appdb.AssetWhere.ConfigurationID.EQ(configId),
+	).AllG(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("fetching assets: %v", err)
 	}
@@ -284,8 +286,8 @@ func GetAssets() ([]appdb.Asset, error) {
 	return assetsSlice, nil
 }
 
-func GetWatchedAssetIDs() ([]int, error) {
-	assets, err := GetAssets()
+func GetWatchedAssetIDs(configId int64) ([]int, error) {
+	assets, err := GetAssets(configId)
 	if err != nil {
 		return nil, err
 	}
