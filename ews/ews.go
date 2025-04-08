@@ -207,6 +207,10 @@ func (h *EWSHelper) GetAssets(config apiserver.Configuration) (model.Root, error
 		return model.Root{}, fmt.Errorf("unmarshaling XML: %v\nFull XML: %v", err, string(responseXML))
 	}
 
+	if env.Body.GetRoomsResponse.ResponseClass == "Error" {
+		return model.Root{}, fmt.Errorf("error retrieving rooms: %s", env.Body.GetRoomsResponse.ResponseCode)
+	}
+
 	xmlRooms := env.Body.GetRoomsResponse.Rooms.Rooms
 	modelRooms := make([]model.Room, 0, len(xmlRooms))
 	for _, room := range xmlRooms {
