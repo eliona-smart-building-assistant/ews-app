@@ -187,11 +187,6 @@ func (h *EWSHelper) GetAssets(config apiserver.Configuration) (model.Root, error
                   xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
     <soapenv:Header>
         <t:RequestServerVersion Version="Exchange2013_SP1"/>
-        <t:ExchangeImpersonation>
-            <t:ConnectingSID>
-                <t:PrincipalName>%s</t:PrincipalName>
-            </t:ConnectingSID>
-        </t:ExchangeImpersonation>
     </soapenv:Header>
     <soapenv:Body>
         <m:GetRooms>
@@ -201,7 +196,7 @@ func (h *EWSHelper) GetAssets(config apiserver.Configuration) (model.Root, error
         </m:GetRooms>
     </soapenv:Body>
 </soapenv:Envelope>
-`, h.serviceUser, *config.RoomListUPN)
+`, *config.RoomListUPN)
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
 		return model.Root{}, fmt.Errorf("requesting rooms: %v", err)
