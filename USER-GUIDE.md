@@ -1,16 +1,16 @@
-# Exchange app
+# Exchange App
 
-### Eliona App for Microsoft Exchange booking integration
+### Eliona App for Microsoft Exchange Booking Integration
 
 > The Exchange app provides synchronization of Eliona asset bookings with Microsoft Exchange servers.
 
-This app is an extension to [Booking app](https://doc.eliona.io/collection/eliona-english/eliona-apps/apps/booking). Create a room list in Exchange, have these rooms available as bookable assets in Eliona and allow users book the rooms directly from Eliona.
+This app is an extension to [Booking app](https://doc.eliona.io/collection/eliona-english/eliona-apps/apps/booking). Create a room list in Exchange, have these rooms available as bookable assets in Eliona, and allow users to book the rooms directly from Eliona.
 
 ## Configuring Exchange Web Services (EWS)
 
-Follow these steps for Exchange Online and hybrid installations having user emails stored in Exchange online. *For Exchange server local installation or hybrid configuration with local-first accounts, skip this chapter and just obtain NTLM credentials and EWS API URL*
+Follow these steps for Exchange Online and hybrid installations having user emails stored in Exchange Online. *For Exchange Server local installation or hybrid configuration with local-first accounts, skip this chapter and just obtain NTLM credentials and EWS API URL.*
 
-> Please note that EWS for Exchange Online will be deprecated on October 1, 2026. This does not affect local exchange servers and hybrid configurations. More details on the retirement can be found on the [Exchange Team Blog](https://techcommunity.microsoft.com/t5/exchange-team-blog/retirement-of-exchange-web-services-in-exchange-online/ba-p/3924440)
+> Please note that EWS for Exchange Online will be deprecated on October 1, 2026. This does not affect local Exchange servers and hybrid configurations. More details on the retirement can be found on the [Exchange Team Blog](https://techcommunity.microsoft.com/t5/exchange-team-blog/retirement-of-exchange-web-services-in-exchange-online/ba-p/3924440).
 
 #### Permissions Limitation
 
@@ -71,13 +71,14 @@ For the application to authenticate:
 To configure application access policies and other settings that are not available through the Entra portal, you must use PowerShell. Note that an online PowerShell console is unavailable without a subscription. Local PowerShell installations on Windows, Linux, or macOS can manage these configurations.
 
 ##### Restrict Access
+
 Since `full_access_as_app` gives access to **all mailboxes**, you should restrict access using **Application Access Policies** in Exchange Online PowerShell.
 
 1. **Connect to Exchange Online**:
    ```powershell
    Connect-ExchangeOnline -UserPrincipalName admin@yourdomain.com
    ```
-   
+
 2. **Create a Security Group for Room Mailboxes**:
    ```powershell
    New-DistributionGroup -Name "RoomBookingAppAccess" -PrimarySmtpAddress "roomaccess@yourdomain.com" -Type Security
@@ -129,13 +130,32 @@ Ensure that the service account (e.g., `service-account@yourdomain.com`) has acc
   Add-RecipientPermission -Identity "room101@yourdomain.com" -Trustee "service-account@yourdomain.com" -AccessRights SendAs
   ```
 
+### Creating a Room List Using PowerShell
+
+If the option to create a room list is not available in the Exchange Admin Center, you can use PowerShell to create and manage a room list.
+
+1. **Open the Exchange Management Shell**:
+   - Ensure you have the necessary administrative permissions.
+
+2. **Create a Room List**:
+   - Use the following PowerShell commands to create a room list and add room mailboxes to it:
+
+   ```powershell
+   # Create a new distribution group to act as a room list
+   New-DistributionGroup -Name "Conference Rooms" -RoomList
+
+   # Add room mailboxes to the room list
+   Add-DistributionGroupMember -Identity "Conference Rooms" -Member "Room1@forest.local"
+   Add-DistributionGroupMember -Identity "Conference Rooms" -Member "Room2@forest.local"
+   ```
+
 ## Installation
 
 The Exchange App is installed via the App Store in Eliona.
 
 ## Assets
 
-The Exchange App automatically creates all the rooms in the configured room list. Once the room is created in Eliona, it will stay there even if removed from room list (but bookings will not be synchronized anymore). A room can be renamed or deleted from Eliona independently. Whenever a new room is added to the room list, it will be created in Eliona.
+The Exchange App automatically creates all the rooms in the configured room list. Once the room is created in Eliona, it will stay there even if removed from the room list (but bookings will not be synchronized anymore). A room can be renamed or deleted from Eliona independently. Whenever a new room is added to the room list, it will be created in Eliona.
 
 ## Configuration
 
@@ -159,7 +179,7 @@ The Exchange App is configured by defining one or more authentication credential
 
 The configuration is done via a corresponding JSON structure. As an example, the following JSON structure can be used to define an endpoint for app permissions:
 
-```
+```json
 {
   "clientId": "01234567-89ab-cdef-0123-456789abcdef",
   "clientSecret": "random-cl13nt-s3cr3t",
@@ -184,26 +204,26 @@ The configuration is done via a corresponding JSON structure. As an example, the
 
 Configurations can be created using this structure in Eliona under `Apps > Exchange app > Settings`. To do this, select the /configs endpoint with the POST method.
 
-After completing configuration, the app starts Continuous Asset Creation. When all discovered rooms are created, user is notified about that in Eliona's notification system.
+After completing configuration, the app starts Continuous Asset Creation. When all discovered rooms are created, the user is notified about that in Eliona's notification system.
 
-## Bookings synchronization
+## Bookings Synchronization
 
-If the Exchange app and Booking app are properly configured, the bookings are synchronized both ways between Exchange server and Eliona. The bookings from Eliona must be done on the assets created by Continuous asset creation. Any changes and cancellations from either Exchange server or Eliona will be synchronized to the other service as well.
+If the Exchange app and Booking app are properly configured, the bookings are synchronized both ways between Exchange Server and Eliona. The bookings from Eliona must be done on the assets created by Continuous Asset Creation. Any changes and cancellations from either Exchange Server or Eliona will be synchronized to the other service as well.
 
-In case any error occurs during synchronization from Eliona to Exchange (typically that room wouldn't accept the invitation), the user is notified about the problem using Eliona notifications and the booking in Eliona is cancelled.
+In case any error occurs during synchronization from Eliona to Exchange (typically that room wouldn't accept the invitation), the user is notified about the problem using Eliona notifications and the booking in Eliona is canceled.
 
-If the booking is made by a user without Exchange account (or an Ad-hoc booking), the booking is made by service user.
+If the booking is made by a user without an Exchange account (or an ad-hoc booking), the booking is made by the service user.
 
 ## Booking Timing
 
 When creating or deleting a booking from Eliona, the booking will be visible in Outlook in a few seconds. Changes made in Outlook are synchronized to Eliona every `refreshInterval` seconds.
 
-## Recurring events
+## Recurring Events
 
 Recurring events can be created in Outlook. All occurrences will be passed to Eliona and be kept synchronized. Users in Eliona can cancel specific occurrences.
 
-Keep in mind that there is a limit of how far in advance can the resources be booked. The limit is configurable in Exchange administration for the resources.
+Keep in mind that there is a limit on how far in advance resources can be booked. The limit is configurable in Exchange administration for the resources.
 
-## Booking multiple assets
+## Booking Multiple Assets
 
-While booking frontend does not allow booking multiple assets at once, Outlook allows it. The app synchronizes the multi-booking into Eliona and the event can be modified or cancelled.
+While the booking frontend does not allow booking multiple assets at once, Outlook allows it. The app synchronizes the multi-booking into Eliona, and the event can be modified or canceled.
