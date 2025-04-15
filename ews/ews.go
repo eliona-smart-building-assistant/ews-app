@@ -247,6 +247,10 @@ type syncFolderItemsResponseMessage struct {
 	SyncState               string  `xml:"SyncState"`
 	IncludesLastItemInRange bool    `xml:"IncludesLastItemInRange"`
 	Changes                 changes `xml:"Changes"`
+	ResponseClass           string  `xml:"ResponseClass,attr"`
+	MessageText             string  `xml:"MessageText"`
+	ResponseCode            string  `xml:"ResponseCode"`
+	DescriptiveLinkKey      string  `xml:"DescriptiveLinkKey"`
 }
 
 type changes struct {
@@ -298,11 +302,6 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
     <soap:Header>
         <t:RequestServerVersion Version="Exchange2013_SP1"/>
-        <t:ExchangeImpersonation>
-            <t:ConnectingSID>
-                <t:SmtpAddress>%s</t:SmtpAddress>
-            </t:ConnectingSID>
-        </t:ExchangeImpersonation>
     </soap:Header>
     <soap:Body>
         <m:SyncFolderItems>
@@ -329,7 +328,7 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
             <m:MaxChangesReturned>256</m:MaxChangesReturned>
         </m:SyncFolderItems>
     </soap:Body>
-</soap:Envelope>`, roomEmail, roomEmail, syncState)
+</soap:Envelope>`, roomEmail, syncState)
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
 		return nil, nil, nil, syncState, fmt.Errorf("getting room %v appointments: %v", roomEmail, err)
@@ -344,6 +343,9 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
 	var env roomEventsEnvelope
 	if err := xml.Unmarshal(responseXML, &env); err != nil {
 		return nil, nil, nil, syncState, fmt.Errorf("unmarshaling XML: %v\nFull XML: %v", err, string(responseXML))
+	}
+	if rm := env.Body.SyncFolderItemsResponse.ResponseMessages.SyncFolderItemsResponseMessage; rm.ResponseClass == "Error" {
+		return nil, nil, nil, syncState, fmt.Errorf("getting room appointments for %v: %v: %v", roomEmail, rm.ResponseCode, rm.MessageText)
 	}
 	changes := env.Body.SyncFolderItemsResponse.ResponseMessages.SyncFolderItemsResponseMessage.Changes
 	for _, change := range changes.Create {
