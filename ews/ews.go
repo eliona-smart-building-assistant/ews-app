@@ -361,7 +361,7 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
 
 		items := []calendarItem{*item}
 		if change.CalendarItem.CalendarItemType == "RecurringMaster" {
-			recurringItems, err := h.expandRecurrence(item.ItemId.Id, roomEmail)
+			recurringItems, err := h.expandRecurrence(item.ItemId.Id)
 			if err != nil {
 				return nil, nil, nil, syncState, fmt.Errorf("expanding recurrence for event %v: %v", item.ItemId.Id, err)
 			}
@@ -401,7 +401,7 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
 
 		items := []calendarItem{*item}
 		if change.CalendarItem.CalendarItemType == "RecurringMaster" {
-			recurringItems, err := h.expandRecurrence(item.ItemId.Id, roomEmail)
+			recurringItems, err := h.expandRecurrence(item.ItemId.Id)
 			if err != nil {
 				return nil, nil, nil, syncState, fmt.Errorf("expanding recurrence for event %v: %v", item.ItemId.Id, err)
 			}
@@ -460,7 +460,7 @@ func (cr createOrUpdate) checkItem() error {
 	return nil
 }
 
-func (h *EWSHelper) expandRecurrence(eventID, roomEmail string) ([]calendarItem, error) {
+func (h *EWSHelper) expandRecurrence(eventID string) ([]calendarItem, error) {
 	var items []calendarItem
 	instanceIndex := 0
 
@@ -470,11 +470,6 @@ func (h *EWSHelper) expandRecurrence(eventID, roomEmail string) ([]calendarItem,
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
     <soap:Header>
         <t:RequestServerVersion Version="Exchange2013_SP1"/>
-        <t:ExchangeImpersonation>
-            <t:ConnectingSID>
-                <t:SmtpAddress>%s</t:SmtpAddress>
-            </t:ConnectingSID>
-        </t:ExchangeImpersonation>
     </soap:Header>
     <soap:Body>
         <m:GetItem>
@@ -495,7 +490,7 @@ func (h *EWSHelper) expandRecurrence(eventID, roomEmail string) ([]calendarItem,
             </m:ItemIds>
         </m:GetItem>
     </soap:Body>
-</soap:Envelope>`, roomEmail, eventID, instanceIndex)
+</soap:Envelope>`, eventID, instanceIndex)
 
 		responseXML, err := h.sendRequest(requestXML)
 		if err != nil {
