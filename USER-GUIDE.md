@@ -125,9 +125,20 @@ Ensure that the service account (e.g., `service-account@yourdomain.com`) has acc
   Add-MailboxFolderPermission -Identity "room101@yourdomain.com:\Calendar" -User "service-account@yourdomain.com" -AccessRights Editor
   ```
 
-- **If "Send As" permissions are needed:**
   ```powershell
-  Add-RecipientPermission -Identity "room101@yourdomain.com" -Trustee "service-account@yourdomain.com" -AccessRights SendAs
+  # Define the room list and the user to grant permissions to
+  $roomList = "rooms@yourdomain.com"
+  $user = "serviceuser@yourdomain.com"
+  
+  # Get all members of the room list
+  $roomMailboxes = Get-DistributionGroupMember -Identity $roomList
+  
+  # Loop through each room mailbox and assign Editor permissions to the calendar folder
+  foreach ($roomMailbox in $roomMailboxes) {
+      $mailboxIdentity = $roomMailbox.PrimarySmtpAddress
+      Add-MailboxFolderPermission -Identity "$mailboxIdentity`:\Calendar" -User $user -AccessRights Editor
+      Write-Output "Editor permissions granted to $user for calendar of $mailboxIdentity"
+  }
   ```
 
 ### Creating a Room List Using PowerShell
