@@ -682,11 +682,6 @@ func (h *EWSHelper) CancelEvent(event syncmodel.BookingGroup) error {
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
     <soap:Header>
         <t:RequestServerVersion Version="Exchange2013_SP1"/>
-        <t:ExchangeImpersonation>
-            <t:ConnectingSID>
-                <t:SmtpAddress>%s</t:SmtpAddress>
-            </t:ConnectingSID>
-        </t:ExchangeImpersonation>
     </soap:Header>
     <soap:Body>
     <m:CreateItem MessageDisposition="SendAndSaveCopy">
@@ -698,7 +693,7 @@ func (h *EWSHelper) CancelEvent(event syncmodel.BookingGroup) error {
       </m:Items>
     </m:CreateItem>
   </soap:Body>
-</soap:Envelope>`, event.OrganizerEmail, eventID, changeKey)
+</soap:Envelope>`, eventID, changeKey)
 
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
@@ -753,11 +748,6 @@ func (h *EWSHelper) CancelOccurrence(group syncmodel.BookingGroup, occurrence sy
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
   <soap:Header>
       <t:RequestServerVersion Version="Exchange2013_SP1"/>
-      <t:ExchangeImpersonation>
-          <t:ConnectingSID>
-              <t:SmtpAddress>%s</t:SmtpAddress>
-          </t:ConnectingSID>
-      </t:ExchangeImpersonation>
   </soap:Header>
   <soap:Body>
     <m:DeleteItem DeleteType="MoveToDeletedItems" SendMeetingCancellations="SendToAllAndSaveCopy">
@@ -766,7 +756,7 @@ func (h *EWSHelper) CancelOccurrence(group syncmodel.BookingGroup, occurrence sy
       </m:ItemIds>
     </m:DeleteItem>
   </soap:Body>
-</soap:Envelope>`, group.OrganizerEmail, eventID, occurrence.InstanceIndex)
+</soap:Envelope>`, eventID, occurrence.InstanceIndex)
 
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
@@ -785,14 +775,16 @@ func (h *EWSHelper) CancelOccurrence(group syncmodel.BookingGroup, occurrence sy
 	var response struct {
 		XMLName xml.Name `xml:"Envelope"`
 		Body    struct {
-			CreateItemResponse struct {
+			DeleteItemResponse struct {
 				ResponseMessages struct {
-					CreateItemResponseMessage struct {
-						ResponseClass string `xml:"ResponseClass,attr"`
-						ResponseCode  string `xml:"ResponseCode"`
-					} `xml:"CreateItemResponseMessage"`
+					DeleteItemResponseMessage struct {
+						ResponseClass      string `xml:"ResponseClass,attr"`
+						MessageText        string `xml:"MessageText"`
+						ResponseCode       string `xml:"ResponseCode"`
+						DescriptiveLinkKey string `xml:"DescriptiveLinkKey"`
+					} `xml:"DeleteItemResponseMessage"`
 				} `xml:"ResponseMessages"`
-			} `xml:"CreateItemResponse"`
+			} `xml:"DeleteItemResponse"`
 		} `xml:"Body"`
 	}
 
@@ -800,11 +792,9 @@ func (h *EWSHelper) CancelOccurrence(group syncmodel.BookingGroup, occurrence sy
 		return fmt.Errorf("unmarshalling XML: %v", err)
 	}
 
-	responseClass := response.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.ResponseClass
-	responseCode := response.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.ResponseCode
-
-	if responseClass != "Success" || responseCode != "NoError" {
-		return fmt.Errorf("cancelling event resulted in %s - %s. Response: %s", responseClass, responseCode, string(responseXML))
+	resp := response.Body.DeleteItemResponse.ResponseMessages.DeleteItemResponseMessage
+	if resp.ResponseClass != "Success" || resp.ResponseCode != "NoError" {
+		return fmt.Errorf("cancelling event resulted in %s - %s - %s Response: %s", resp.ResponseClass, resp.ResponseCode, resp.MessageText, string(responseXML))
 	}
 
 	return nil
@@ -815,11 +805,6 @@ func (h *EWSHelper) getUIDFromItemId(itemMailbox string, itemId string) (string,
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types">
     <soap:Header>
         <t:RequestServerVersion Version="Exchange2013_SP1"/>
-        <t:ExchangeImpersonation>
-            <t:ConnectingSID>
-                <t:SmtpAddress>%s</t:SmtpAddress>
-            </t:ConnectingSID>
-        </t:ExchangeImpersonation>
     </soap:Header>
     <soap:Body>
         <GetItem xmlns="http://schemas.microsoft.com/exchange/services/2006/messages">
@@ -834,7 +819,7 @@ func (h *EWSHelper) getUIDFromItemId(itemMailbox string, itemId string) (string,
             </ItemIds>
         </GetItem>
     </soap:Body>
-</soap:Envelope>`, itemMailbox, itemId)
+</soap:Envelope>`, itemId)
 
 	respBody, err := h.sendRequest(requestXML)
 	if err != nil {
@@ -910,11 +895,6 @@ func (h *EWSHelper) findEventUIDInMailbox(mailbox, uid string) (itemID string, c
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
     <soap:Header>
         <t:RequestServerVersion Version="Exchange2013_SP1"/>
-        <t:ExchangeImpersonation>
-            <t:ConnectingSID>
-                <t:SmtpAddress>%s</t:SmtpAddress>
-            </t:ConnectingSID>
-        </t:ExchangeImpersonation>
     </soap:Header>
     <soap:Body>
       <m:FindItem Traversal="Shallow">
@@ -938,7 +918,7 @@ func (h *EWSHelper) findEventUIDInMailbox(mailbox, uid string) (itemID string, c
         </m:ParentFolderIds>
       </m:FindItem>
     </soap:Body>
-</soap:Envelope>`, mailbox, globalObjectID, mailbox)
+</soap:Envelope>`, globalObjectID, mailbox)
 
 	respBody, err := h.sendRequest(requestXML)
 	if err != nil {
