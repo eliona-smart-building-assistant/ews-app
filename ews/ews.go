@@ -559,11 +559,6 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (exchangeUID stri
                   xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
     <soapenv:Header>
         <t:RequestServerVersion Version="Exchange2013_SP1"/>
-        <t:ExchangeImpersonation>
-            <t:ConnectingSID>
-                <t:SmtpAddress>%s</t:SmtpAddress>
-            </t:ConnectingSID>
-        </t:ExchangeImpersonation>
     </soapenv:Header>
     <soapenv:Body>
         <m:CreateItem SendMeetingInvitations="SendToAllAndSaveCopy">
@@ -584,7 +579,6 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (exchangeUID stri
         </m:CreateItem>
     </soapenv:Body>
 </soapenv:Envelope>`,
-		appointment.Organizer,
 		appointment.Subject,
 		appointment.Start.Format(time.RFC3339),
 		appointment.End.Format(time.RFC3339),
@@ -619,9 +613,9 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (exchangeUID stri
 	}
 
 	// Let's give the server some time to process the invitation. Sometimes it's
-	// instant, sometimes 2 seconds aren't enough. This should be long enough
-	// time.
-	time.Sleep(15 * time.Second)
+	// instant, sometimes 2 seconds aren't enough. On local Exchange server, it
+	// might take even more than 15 seconds. This should be long enough time.
+	time.Sleep(90 * time.Second)
 	for _, attendee := range appointment.Attendees {
 		resourceEventID, _, err := h.findEventUIDInMailbox(attendee, exchangeUID)
 		if errors.Is(err, errNotFound) {
