@@ -366,20 +366,24 @@ func listenForBookings(config apiserver.Configuration) {
 		log.Error("eliona-bookings", "listening for booking changes: %v", err)
 		return
 	}
-outer:
+
 	for group := range bookingsChan {
 		if len(group.Occurrences) == 1 && group.Occurrences[0].Cancelled {
 			// Typical case, just a single booking. Cancel the RecurringMaster/group.
 			cancelInEWS(group, config)
 			continue
 		}
+		var nonCancelledOccurrences []syncmodel.BookingOccurrence
 		for _, occurrence := range group.Occurrences {
 			if occurrence.Cancelled {
 				// We must handle cancellation differently to cancel just single occurrences.
 				cancelOccurrenceInEWS(group, occurrence, config)
-				continue outer
+				continue
 			}
+			nonCancelledOccurrences = append(nonCancelledOccurrences, occurrence)
 		}
+		// More than one booking is unsupported now, shouldn't happend from UI, will error while booking.
+		group.Occurrences = nonCancelledOccurrences
 		bookInEWS(group, config)
 		continue
 	}
