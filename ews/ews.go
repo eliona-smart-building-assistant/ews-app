@@ -673,7 +673,7 @@ type appointmentCreated struct {
 
 func (h *EWSHelper) CancelEvent(event syncmodel.BookingGroup) error {
 	// Find the organizer's eventId and changeKey using the UID
-	eventID, changeKey, err := h.findEventUIDInMailbox(event.OrganizerEmail, event.ExchangeUID)
+	eventID, changeKey, err := h.findEventUIDInMailbox(h.serviceUser, event.ExchangeUID)
 	if err != nil {
 		return fmt.Errorf("finding organizer event ID: %v", err)
 	}
@@ -739,7 +739,7 @@ func (h *EWSHelper) CancelEvent(event syncmodel.BookingGroup) error {
 
 func (h *EWSHelper) CancelOccurrence(group syncmodel.BookingGroup, occurrence syncmodel.BookingOccurrence) error {
 	// Find the organizer's eventId using the UID
-	eventID, _, err := h.findEventUIDInMailbox(group.OrganizerEmail, group.ExchangeUID)
+	eventID, _, err := h.findEventUIDInMailbox(h.serviceUser, group.ExchangeUID)
 	if err != nil {
 		return fmt.Errorf("finding organizer event ID: %v", err)
 	}
