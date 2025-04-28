@@ -485,7 +485,7 @@ func createAppointment(assetsEmails []string, group syncmodel.BookingGroup, conf
 		Start:     book.Start,
 		End:       book.End,
 		Location:  assetsEmails[0],
-		Attendees: assetsEmails,
+		Attendees: append(assetsEmails, group.OrganizerEmail),
 	}
 	exchangeUID, resourceEventIDs, err := ewsHelper.CreateAppointment(app)
 	group.ExchangeUID = exchangeUID
