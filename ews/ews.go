@@ -18,7 +18,6 @@ package ews
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
