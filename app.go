@@ -500,6 +500,7 @@ func createAppointment(assetsEmails []string, group syncmodel.BookingGroup, conf
 			return
 		}
 		log.Debug("ews", "booking for %v was conflicting; cancelled", group.OrganizerEmail)
+		return
 	} else if errors.Is(err, ews.ErrNonExistentMailbox) && group.OrganizerEmail != *config.ServiceUserUPN {
 		log.Debug("ews", "booking for %v will be booked by a service user", group.OrganizerEmail)
 		group.OrganizerEmail = *config.ServiceUserUPN

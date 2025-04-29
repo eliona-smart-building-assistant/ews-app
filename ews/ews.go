@@ -943,6 +943,8 @@ func (h *EWSHelper) findEventUIDInMailbox(mailbox, uid string) (itemID string, c
 	if err := xml.Unmarshal(respBody, &response); err != nil {
 		return "", "", fmt.Errorf("XML unmarshal failed: %v", err)
 	}
+	log.Debug("ews", "finding event in mailbox %v: request: %v", mailbox, requestXML)
+	log.Debug("ews", "response: %v", string(respBody))
 
 	if len(response.Body.FindItemResponse.ResponseMessages.FindItemResponseMessage.RootFolder.Items.CalendarItem) == 0 {
 		return "", "", errNotFound
