@@ -617,6 +617,9 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (exchangeUID stri
 	// might take even more than 15 seconds. This should be long enough time.
 	time.Sleep(90 * time.Second)
 	for _, attendee := range appointment.Attendees {
+		if attendee == appointment.Organizer {
+			continue
+		}
 		resourceEventID, _, err := h.findEventUIDInMailbox(attendee, exchangeUID)
 		if errors.Is(err, errNotFound) {
 			// The resource has probably declined the invitation.
@@ -924,7 +927,10 @@ func (h *EWSHelper) findEventUIDInMailbox(mailbox, uid string) (itemID string, c
 			FindItemResponse struct {
 				ResponseMessages struct {
 					FindItemResponseMessage struct {
-						RootFolder struct {
+						ResponseClass string `xml:"ResponseClass,attr"`
+						MessageText   string `xml:"MessageText"`
+						ResponseCode  string `xml:"ResponseCode"`
+						RootFolder    struct {
 							Items struct {
 								CalendarItem []struct {
 									ItemId struct {
@@ -945,6 +951,10 @@ func (h *EWSHelper) findEventUIDInMailbox(mailbox, uid string) (itemID string, c
 	}
 	log.Debug("ews", "finding event in mailbox %v: request: %v", mailbox, requestXML)
 	log.Debug("ews", "response: %v", string(respBody))
+
+	if response.Body.FindItemResponse.ResponseMessages.FindItemResponseMessage.ResponseClass == "Error" {
+		return "", "", fmt.Errorf("received error: %v: %v", response.Body.FindItemResponse.ResponseMessages.FindItemResponseMessage.ResponseCode, response.Body.FindItemResponse.ResponseMessages.FindItemResponseMessage.MessageText)
+	}
 
 	if len(response.Body.FindItemResponse.ResponseMessages.FindItemResponseMessage.RootFolder.Items.CalendarItem) == 0 {
 		return "", "", errNotFound
