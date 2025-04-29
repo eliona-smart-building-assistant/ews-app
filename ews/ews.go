@@ -431,6 +431,7 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
 	}
 
 	newSyncState = env.Body.SyncFolderItemsResponse.ResponseMessages.SyncFolderItemsResponseMessage.SyncState
+	log.Debug("ews", "got appointments for %v: %v new, %v updated, %v cancelled", roomEmail, len(new), len(updated), len(cancelled))
 
 	return new, updated, cancelled, newSyncState, nil
 }

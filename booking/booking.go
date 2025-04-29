@@ -42,7 +42,7 @@ func (c *client) get(elionaID int32) (bookingResponse, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return bookingResponse{}, fmt.Errorf(resp.Status)
+		return bookingResponse{}, fmt.Errorf("%v", resp.Status)
 	} else if resp.StatusCode != http.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -86,6 +86,7 @@ func (c *client) Book(groups map[string]syncmodel.BookingGroup) error {
 			// same as in the request.
 			group.Occurrences[i].ElionaID = responseBooking.Id
 		}
+		log.Debug("booking", "booking group: %+v", group)
 
 		if err := conf.UpsertBooking(group); err != nil {
 			return fmt.Errorf("upserting group id %v: %v", group.ElionaID, err)
