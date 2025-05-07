@@ -94,6 +94,7 @@ func NewEWSHelper(config apiserver.Configuration) (*EWSHelper, error) {
 		username:     *config.Username,
 		password:     *config.Password,
 		addressCache: make(map[string]string),
+		serviceUser:  *config.ServiceUserUPN,
 	}, nil
 }
 
