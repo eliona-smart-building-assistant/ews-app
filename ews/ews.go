@@ -1,5 +1,5 @@
 //  This file is part of the eliona project.
-//  Copyright © 2022 LEICOM iTEC AG. All Rights Reserved.
+//  Copyright © 2025 LEICOM iTEC AG. All Rights Reserved.
 //  ______ _ _
 // |  ____| (_)
 // | |__  | |_  ___  _ __   __ _
@@ -793,6 +793,95 @@ func (h *EWSHelper) CancelOccurrence(group syncmodel.BookingGroup, occurrence sy
 	resp := response.Body.DeleteItemResponse.ResponseMessages.DeleteItemResponseMessage
 	if resp.ResponseClass != "Success" || resp.ResponseCode != "NoError" {
 		return fmt.Errorf("cancelling event resulted in %s - %s - %s Response: %s", resp.ResponseClass, resp.ResponseCode, resp.MessageText, string(responseXML))
+	}
+
+	return nil
+}
+
+func (h *EWSHelper) UpdateOccurrence(group syncmodel.BookingGroup, occurrence syncmodel.BookingOccurrence) error {
+	eventID, changeKey, err := h.findEventUIDInMailbox(h.serviceUser, group.ExchangeUID)
+	if err != nil {
+		return fmt.Errorf("finding organizer event ID: %v", err)
+	}
+
+	log.Debug("", "Updating occurrence with details:")
+	log.Debug("", "  EventID: %s", eventID)
+	log.Debug("", "  ChangeKey: %s", changeKey)
+	log.Debug("", "  InstanceIndex: %d", occurrence.InstanceIndex)
+	log.Debug("", "  Start Time: %s", occurrence.Start.Format(time.RFC3339))
+	log.Debug("", "  End Time: %s", occurrence.End.Format(time.RFC3339))
+
+	if eventID == "" {
+		return fmt.Errorf("eventID is empty")
+	}
+
+	requestXML := fmt.Sprintf(`
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Header>
+      <t:RequestServerVersion Version="Exchange2013_SP1"/>
+  </soap:Header>
+  <soap:Body>
+    <m:UpdateItem ConflictResolution="AlwaysOverwrite" SendMeetingInvitationsOrCancellations="SendToAllAndSaveCopy">
+      <m:ItemChanges>
+        <t:ItemChange>
+          <t:ItemId Id="%s" ChangeKey="%s"/>
+          <t:Updates>
+            <t:SetItemField>
+              <t:FieldURI FieldURI="calendar:Start"/>
+              <t:CalendarItem>
+                <t:Start>%s</t:Start>
+              </t:CalendarItem>
+            </t:SetItemField>
+            <t:SetItemField>
+              <t:FieldURI FieldURI="calendar:End"/>
+              <t:CalendarItem>
+                <t:End>%s</t:End>
+              </t:CalendarItem>
+            </t:SetItemField>
+          </t:Updates>
+        </t:ItemChange>
+      </m:ItemChanges>
+    </m:UpdateItem>
+  </soap:Body>
+</soap:Envelope>`, eventID, changeKey, occurrence.Start.Format(time.RFC3339), occurrence.End.Format(time.RFC3339))
+
+	responseXML, err := h.sendRequest(requestXML)
+	if err != nil {
+		return fmt.Errorf("requesting update event: %w", err)
+	}
+
+	// First, try to unmarshal into SOAPFault to see if there was an error.
+	var soapFault soapFault
+	if err := xml.Unmarshal(responseXML, &soapFault); err == nil && soapFault.Body.Fault.FaultCode != "" {
+		if soapFault.Body.Fault.FaultCode == "ErrorNonExistentMailbox" {
+			return ErrNonExistentMailbox
+		}
+		return fmt.Errorf("SOAP fault: %s - %s", soapFault.Body.Fault.Detail.ResponseCode, soapFault.Body.Fault.Detail.Message)
+	}
+
+	var response struct {
+		XMLName xml.Name `xml:"Envelope"`
+		Body    struct {
+			UpdateItemResponse struct {
+				ResponseMessages struct {
+					UpdateItemResponseMessage struct {
+						ResponseClass      string `xml:"ResponseClass,attr"`
+						MessageText        string `xml:"MessageText"`
+						ResponseCode       string `xml:"ResponseCode"`
+						DescriptiveLinkKey string `xml:"DescriptiveLinkKey"`
+					} `xml:"UpdateItemResponseMessage"`
+				} `xml:"ResponseMessages"`
+			} `xml:"UpdateItemResponse"`
+		} `xml:"Body"`
+	}
+
+	if err := xml.Unmarshal(responseXML, &response); err != nil {
+		return fmt.Errorf("unmarshalling XML: %v", err)
+	}
+
+	resp := response.Body.UpdateItemResponse.ResponseMessages.UpdateItemResponseMessage
+	if resp.ResponseClass != "Success" || resp.ResponseCode != "NoError" {
+		return fmt.Errorf("updating event resulted in %s - %s - %s Response: %s", resp.ResponseClass, resp.ResponseCode, resp.MessageText, string(responseXML))
 	}
 
 	return nil

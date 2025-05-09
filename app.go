@@ -458,6 +458,34 @@ func bookInEWS(group syncmodel.BookingGroup, config apiserver.Configuration) {
 		log.Error("booking", "booking %d != 1 occurences of a group ElionaID %d is not supported", len(group.Occurrences), group.ElionaID)
 		return
 	}
+	booking, err := conf.GetBookingGroupByElionaID(group.ElionaID)
+	if err != nil {
+		log.Error("conf", "getting booking for Eliona ID %v: %v", group.ElionaID, err)
+		return
+	} else if errors.Is(err, conf.ErrNotFound) || !booking.ExchangeUID.Valid || !booking.ExchangeOrganizerMailbox.Valid {
+		newAppointment(group, config)
+		return
+	}
+	group.ExchangeUID = booking.ExchangeUID.String
+	group.OrganizerEmail = booking.ExchangeOrganizerMailbox.String
+	updateOccurrenceInEWS(group, group.Occurrences[0], config)
+	return
+}
+
+func updateOccurrenceInEWS(group syncmodel.BookingGroup, occurrence syncmodel.BookingOccurrence, config apiserver.Configuration) {
+	ewsHelper, err := getEWSHelper(config)
+	if err != nil {
+		log.Error("ews", "getting ews helper: %v", err)
+		return
+	}
+
+	if err := ewsHelper.UpdateOccurrence(group, occurrence); err != nil {
+		log.Error("ews", "updating event: %v", err)
+		return
+	}
+}
+
+func newAppointment(group syncmodel.BookingGroup, config apiserver.Configuration) {
 	book := group.Occurrences[0]
 	assets, err := conf.GetAssetEmailsByIds(book.GetAssetIDs())
 	if err != nil {
