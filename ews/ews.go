@@ -608,7 +608,7 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (exchangeUID stri
 
 	organizerEventID := env.Body.CreateItemResponse.ResponseMessages.CreateItemResponseMessage.Items.CalendarItem.ItemId.ID
 
-	exchangeUID, err = h.getUIDFromItemId(appointment.Organizer, organizerEventID)
+	exchangeUID, err = h.getUIDFromItemId(organizerEventID)
 	if err != nil {
 		return "", nil, fmt.Errorf("getting UID from ItemID: %v", err)
 	}
@@ -884,10 +884,11 @@ func (h *EWSHelper) UpdateOccurrence(group syncmodel.BookingGroup, occurrence sy
 		return fmt.Errorf("updating event resulted in %s - %s - %s Response: %s", resp.ResponseClass, resp.ResponseCode, resp.MessageText, string(responseXML))
 	}
 
+	//todo: verify that the event was accepted, otherwise cancel, the same as when booking
 	return nil
 }
 
-func (h *EWSHelper) getUIDFromItemId(itemMailbox string, itemId string) (string, error) {
+func (h *EWSHelper) getUIDFromItemId(itemId string) (string, error) {
 	requestXML := fmt.Sprintf(`
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types">
     <soap:Header>
@@ -1095,8 +1096,7 @@ func (h *EWSHelper) resolveDN(name string) (string, error) {
 	}
 	responseMessages := resp.Body.ResolveNamesResponse.ResponseMessages.ResolveNamesResponseMessage
 	if len(responseMessages) != 1 {
-		log.Debug("ews", string(responseXML))
-		return "", fmt.Errorf("EWS reported an error")
+		return "", fmt.Errorf("received more than one responseMessage from EWS: %s", string(responseXML))
 	}
 	resolutionMessages := responseMessages[0].ResolutionSet.Resolution
 	if rms := len(resolutionMessages); rms != 1 {
