@@ -479,10 +479,29 @@ func updateOccurrenceInEWS(group syncmodel.BookingGroup, occurrence syncmodel.Bo
 		return
 	}
 
-	if err := ewsHelper.UpdateOccurrence(group, occurrence); err != nil {
-		log.Error("ews", "updating event: %v", err)
+	err = ewsHelper.UpdateOccurrence(group, occurrence)
+	if errors.Is(err, ews.ErrDeclined) {
+		bc := booking.NewClient(*config.BookingAppURL)
+		if err := ewsHelper.CancelEvent(group); err != nil {
+			log.Error("ews", "cancelling conflicting event: %v", err)
+			return
+		}
+		if err := bc.Cancel(group.ElionaID, "conflict"); err != nil {
+			log.Error("booking", "cancelling conflicting appointment: %v", err)
+			return
+		}
+		log.Debug("ews", "updated booking for %v was conflicting; cancelled", group.OrganizerEmail)
+		return
+	} else if err != nil {
+		log.Error("ews", "updating appointment %v failed, will be cancelled: %v", group.ElionaID, err)
+		bc := booking.NewClient(*config.BookingAppURL)
+		if err := bc.Cancel(group.ElionaID, "error"); err != nil {
+			log.Error("booking", "cancelling errored appointment: %v", err)
+			return
+		}
 		return
 	}
+	log.Debug("ews", "updated a booking for %v", group.OrganizerEmail)
 }
 
 func newAppointment(group syncmodel.BookingGroup, config apiserver.Configuration) {
@@ -502,6 +521,7 @@ func createAppointment(assetsEmails []string, group syncmodel.BookingGroup, conf
 		group.OrganizerEmail = *config.ServiceUserUPN
 	}
 	// We want to book on behalf of the organizer, thus we need to create a helper for each booking.
+	// TODO: that is no longer needed
 	ewsHelper, err := getEWSHelper(config)
 	if err != nil {
 		log.Error("ews", "getting ews helper: %v", err)
@@ -535,8 +555,7 @@ func createAppointment(assetsEmails []string, group syncmodel.BookingGroup, conf
 		createAppointment(assetsEmails, group, config)
 		return
 	} else if err != nil {
-		log.Error("ews", "creating appointment %v: %v", group.ElionaID, err)
-		log.Debug("ews", "cancelling booking %v", group.ElionaID)
+		log.Error("ews", "creating appointment %v failed, will be cancelled: %v", group.ElionaID, err)
 		bc := booking.NewClient(*config.BookingAppURL)
 		if err := bc.Cancel(group.ElionaID, "error"); err != nil {
 			log.Error("booking", "cancelling errored appointment: %v", err)

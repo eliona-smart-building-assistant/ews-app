@@ -23,6 +23,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"ews/apiserver"
+	"ews/conf"
 	"ews/model"
 	syncmodel "ews/model/sync"
 	"fmt"
@@ -613,22 +614,9 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (exchangeUID stri
 		return "", nil, fmt.Errorf("getting UID from ItemID: %v", err)
 	}
 
-	// Let's give the server some time to process the invitation. Sometimes it's
-	// instant, sometimes 2 seconds aren't enough. On local Exchange server, it
-	// might take even more than 15 seconds. This should be long enough time.
-	time.Sleep(90 * time.Second)
-	for _, attendee := range appointment.Attendees {
-		if attendee == appointment.Organizer {
-			continue
-		}
-		resourceEventID, _, err := h.findEventUIDInMailbox(attendee, exchangeUID)
-		if errors.Is(err, errNotFound) {
-			// The resource has probably declined the invitation.
-			return exchangeUID, nil, ErrDeclined
-		} else if err != nil {
-			return exchangeUID, nil, fmt.Errorf("finding resource event ID: %v", err)
-		}
-		resourceEventIDs = append(resourceEventIDs, resourceEventID)
+	resourceEventIDs, err = h.verifyAcceptance(appointment.Attendees, appointment.Organizer, exchangeUID)
+	if err != nil {
+		return exchangeUID, nil, fmt.Errorf("verifying acceptance: %w", err)
 	}
 
 	return exchangeUID, resourceEventIDs, nil
@@ -667,6 +655,27 @@ type appointmentCreated struct {
 			} `xml:"ResponseMessages"`
 		} `xml:"CreateItemResponse"`
 	} `xml:"Body"`
+}
+
+func (h *EWSHelper) verifyAcceptance(attendees []string, organizer string, exchangeUID string) (resourceEventIDs []string, err error) {
+	// Let's give the server some time to process the invitation. Sometimes it's
+	// instant, sometimes 2 seconds aren't enough. On local Exchange server, it
+	// might take even more than 15 seconds. This should be long enough time.
+	time.Sleep(90 * time.Second)
+	for _, attendee := range attendees {
+		if attendee == organizer {
+			continue
+		}
+		resourceEventID, _, err := h.findEventUIDInMailbox(attendee, exchangeUID)
+		if errors.Is(err, errNotFound) {
+			// The resource has probably declined the invitation.
+			return nil, ErrDeclined
+		} else if err != nil {
+			return nil, fmt.Errorf("finding resource event ID: %v", err)
+		}
+		resourceEventIDs = append(resourceEventIDs, resourceEventID)
+	}
+	return resourceEventIDs, nil
 }
 
 func (h *EWSHelper) CancelEvent(event syncmodel.BookingGroup) error {
@@ -804,13 +813,6 @@ func (h *EWSHelper) UpdateOccurrence(group syncmodel.BookingGroup, occurrence sy
 		return fmt.Errorf("finding organizer event ID: %v", err)
 	}
 
-	log.Debug("", "Updating occurrence with details:")
-	log.Debug("", "  EventID: %s", eventID)
-	log.Debug("", "  ChangeKey: %s", changeKey)
-	log.Debug("", "  InstanceIndex: %d", occurrence.InstanceIndex)
-	log.Debug("", "  Start Time: %s", occurrence.Start.Format(time.RFC3339))
-	log.Debug("", "  End Time: %s", occurrence.End.Format(time.RFC3339))
-
 	if eventID == "" {
 		return fmt.Errorf("eventID is empty")
 	}
@@ -884,7 +886,21 @@ func (h *EWSHelper) UpdateOccurrence(group syncmodel.BookingGroup, occurrence sy
 		return fmt.Errorf("updating event resulted in %s - %s - %s Response: %s", resp.ResponseClass, resp.ResponseCode, resp.MessageText, string(responseXML))
 	}
 
-	//todo: verify that the event was accepted, otherwise cancel, the same as when booking
+	exchangeUID, err := h.getUIDFromItemId(eventID)
+	if err != nil {
+		return fmt.Errorf("getting UID from ItemID: %v", err)
+	}
+
+	assets, err := conf.GetAssetEmailsByIds(occurrence.GetAssetIDs())
+	if err != nil {
+		return fmt.Errorf("getting asset IDs %v: %v", occurrence.GetAssetIDs(), err)
+	}
+
+	_, err = h.verifyAcceptance(assets, group.OrganizerEmail, exchangeUID)
+	if err != nil {
+		return fmt.Errorf("verifying acceptance: %w", err)
+	}
+
 	return nil
 }
 
