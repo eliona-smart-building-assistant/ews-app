@@ -368,6 +368,7 @@ func listenForBookings(config apiserver.Configuration) {
 	}
 
 	for group := range bookingsChan {
+		log.Debug("booking", "received new booking: %+v", group)
 		if len(group.Occurrences) == 1 && group.Occurrences[0].Cancelled {
 			// Typical case, just a single booking. Cancel the RecurringMaster/group.
 			cancelInEWS(group, config)
@@ -396,12 +397,12 @@ func cancelInEWS(group syncmodel.BookingGroup, config apiserver.Configuration) {
 	defer mu.Unlock()
 	ewsHelper, err := getEWSHelper(config)
 	if err != nil {
-		log.Error("ews", "getting ews helper: %v", err)
+		log.Error("ews", "cancelling booking: getting ews helper: %v", err)
 		return
 	}
 	booking, err := conf.GetBookingGroupByElionaID(group.ElionaID)
 	if err != nil {
-		log.Error("conf", "getting booking for Eliona ID %v: %v", group.ElionaID, err)
+		log.Error("conf", "cancelling booking: getting booking for Eliona ID %v: %v", group.ElionaID, err)
 		return
 	} else if !booking.ExchangeUID.Valid || !booking.ExchangeOrganizerMailbox.Valid {
 		log.Error("db", "cancelling booking: booking %v does not have exchangeUID or Mailbox", booking.ID)
@@ -422,15 +423,15 @@ func cancelOccurrenceInEWS(group syncmodel.BookingGroup, occurrence syncmodel.Bo
 	defer mu.Unlock()
 	ewsHelper, err := getEWSHelper(config)
 	if err != nil {
-		log.Error("ews", "getting ews helper: %v", err)
+		log.Error("ews", "cancelling occurrence: getting ews helper: %v", err)
 		return
 	}
 	booking, err := conf.GetBookingGroupByElionaID(group.ElionaID)
 	if err != nil {
-		log.Error("conf", "getting booking for Eliona ID %v: %v", group.ElionaID, err)
+		log.Error("conf", "cancelling occurrence: getting booking for Eliona ID %v: %v", group.ElionaID, err)
 		return
 	} else if !booking.ExchangeUID.Valid || !booking.ExchangeOrganizerMailbox.Valid {
-		log.Error("db", "cancelling booking: booking %v does not have exchangeUID or Mailbox", booking.ID)
+		log.Error("db", "cancelling occurrence: booking %v does not have exchangeUID or Mailbox", booking.ID)
 		return
 	}
 	group.ExchangeUID = booking.ExchangeUID.String
@@ -438,7 +439,7 @@ func cancelOccurrenceInEWS(group syncmodel.BookingGroup, occurrence syncmodel.Bo
 
 	dbOccurrence, err := conf.GetBookingOccurrenceByElionaID(occurrence.ElionaID)
 	if err != nil {
-		log.Error("conf", "getting dbOccurrence for Eliona ID %v: %v", group.ElionaID, err)
+		log.Error("conf", "cancelling occurrence: getting dbOccurrence for Eliona ID %v: %v", group.ElionaID, err)
 		return
 	} else if dbOccurrence.ExchangeInstanceIndex == 0 {
 		log.Error("db", "cancelling occurrence: dbOccurrence %v does not have ExchangeInstanceIndex", booking.ID)
@@ -446,7 +447,7 @@ func cancelOccurrenceInEWS(group syncmodel.BookingGroup, occurrence syncmodel.Bo
 	}
 
 	if err := ewsHelper.CancelOccurrence(group, occurrence); err != nil {
-		log.Error("ews", "cancelling event: %v", err)
+		log.Error("ews", "cancelling occurrence: %v", err)
 		return
 	}
 }
