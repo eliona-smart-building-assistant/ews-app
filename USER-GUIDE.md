@@ -160,6 +160,10 @@ If the option to create a room list is not available in the Exchange Admin Cente
    Add-DistributionGroupMember -Identity "Conference Rooms" -Member "Room2@forest.local"
    ```
 
+### Preserving booking names
+
+By default, Exchange server removes the event name and substitutes it with organizer name when saving into resource calendar. To override this behaviour, follow instructions in [Microsoft documentation](https://learn.microsoft.com/en-us/exchange/troubleshoot/client-connectivity/calendar-shows-organizer-name?WT.mc_id=M365-MVP-9501) or a more detailed explanation on [Practical 365 blog](https://practical365.com/room-mailbox-meeting-organizer/).
+
 ## Installation
 
 The Exchange App is installed via the App Store in Eliona.

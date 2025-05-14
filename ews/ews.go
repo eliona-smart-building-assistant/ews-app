@@ -378,6 +378,7 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
 				InstanceIndex: item.InstanceIndex,
 				Start:         item.Start,
 				End:           item.End,
+				Title:         item.Subject,
 				Cancelled:     false,
 				RoomBookings: []syncmodel.RoomBooking{{
 					ExchangeIDInResourceMailbox: item.ItemId.Id,
@@ -418,6 +419,7 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
 				InstanceIndex: item.InstanceIndex,
 				Start:         item.Start,
 				End:           item.End,
+				Title:         item.Subject,
 				Cancelled:     false,
 				RoomBookings: []syncmodel.RoomBooking{{
 					ExchangeIDInResourceMailbox: item.ItemId.Id,
@@ -581,7 +583,7 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (exchangeUID stri
         </m:CreateItem>
     </soapenv:Body>
 </soapenv:Envelope>`,
-		appointment.Subject,
+		xmlEscape(appointment.Subject),
 		appointment.Start.Format(time.RFC3339),
 		appointment.End.Format(time.RFC3339),
 		appointment.Location,
@@ -620,6 +622,12 @@ func (h *EWSHelper) CreateAppointment(appointment Appointment) (exchangeUID stri
 	}
 
 	return exchangeUID, resourceEventIDs, nil
+}
+
+func xmlEscape(s string) string {
+	var buf bytes.Buffer
+	xml.EscapeText(&buf, []byte(s))
+	return buf.String()
 }
 
 func formatAttendees(attendees []string) string {
@@ -829,6 +837,12 @@ func (h *EWSHelper) UpdateOccurrence(group syncmodel.BookingGroup, occurrence sy
           <t:ItemId Id="%s" ChangeKey="%s"/>
           <t:Updates>
             <t:SetItemField>
+              <t:FieldURI FieldURI="item:Subject"/>
+              <t:CalendarItem>
+                <t:Subject>%s</t:Subject>
+              </t:CalendarItem>
+            </t:SetItemField>
+            <t:SetItemField>
               <t:FieldURI FieldURI="calendar:Start"/>
               <t:CalendarItem>
                 <t:Start>%s</t:Start>
@@ -845,7 +859,7 @@ func (h *EWSHelper) UpdateOccurrence(group syncmodel.BookingGroup, occurrence sy
       </m:ItemChanges>
     </m:UpdateItem>
   </soap:Body>
-</soap:Envelope>`, eventID, changeKey, occurrence.Start.Format(time.RFC3339), occurrence.End.Format(time.RFC3339))
+</soap:Envelope>`, eventID, changeKey, xmlEscape(occurrence.Title), occurrence.Start.Format(time.RFC3339), occurrence.End.Format(time.RFC3339))
 
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {

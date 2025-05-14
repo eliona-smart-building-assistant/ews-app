@@ -14,6 +14,7 @@ type BookingOccurrence struct {
 	InstanceIndex int
 	Start         time.Time
 	End           time.Time
+	Title         string
 	Cancelled     bool
 	RoomBookings  []RoomBooking
 }

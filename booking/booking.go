@@ -84,6 +84,7 @@ func (c *client) Book(groups map[string]syncmodel.BookingGroup) error {
 				OrganizerID: group.OrganizerEmail,
 				Start:       booking.Start,
 				End:         booking.End,
+				Title:       booking.Title,
 				Cancelled:   booking.Cancelled,
 			})
 		}
@@ -121,6 +122,7 @@ type bookingRequest struct {
 	OrganizerID string    `json:"organizerID"`
 	Start       time.Time `json:"start"`
 	End         time.Time `json:"end"`
+	Title       string    `json:"title"`
 	Cancelled   bool      `json:"cancelled"`
 }
 
@@ -276,6 +278,7 @@ type Booking struct {
 	OrganizerID string    `json:"organizerID"`
 	Start       time.Time `json:"start"`
 	End         time.Time `json:"end"`
+	Title       string    `json:"title"`
 	Cancelled   bool      `json:"cancelled"`
 }
 
@@ -337,6 +340,7 @@ func (c *client) ListenForBookings(ctx context.Context, assetIDs []int) (<-chan 
 					RoomBookings: roomBookings,
 					Start:        booking.Start,
 					End:          booking.End,
+					Title:        booking.Title,
 					Cancelled:    booking.Cancelled,
 				})
 				if organizer == "" {

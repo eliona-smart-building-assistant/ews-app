@@ -529,7 +529,7 @@ func createAppointment(assetsEmails []string, group syncmodel.BookingGroup, conf
 	}
 	app := ews.Appointment{
 		Organizer: group.OrganizerEmail,
-		Subject:   "Eliona booking",
+		Subject:   book.Title,
 		Start:     book.Start,
 		End:       book.End,
 		Location:  assetsEmails[0],
