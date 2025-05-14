@@ -461,9 +461,13 @@ func bookInEWS(group syncmodel.BookingGroup, config apiserver.Configuration) {
 	}
 	booking, err := conf.GetBookingGroupByElionaID(group.ElionaID)
 	if err != nil {
-		log.Error("conf", "getting booking for Eliona ID %v: %v", group.ElionaID, err)
+		if errors.Is(err, conf.ErrNotFound) {
+			newAppointment(group, config)
+			return
+		}
+		log.Error("conf", "bookInEWS: getting booking for Eliona ID %v: %v", group.ElionaID, err)
 		return
-	} else if errors.Is(err, conf.ErrNotFound) || !booking.ExchangeUID.Valid || !booking.ExchangeOrganizerMailbox.Valid {
+	} else if !booking.ExchangeUID.Valid || !booking.ExchangeOrganizerMailbox.Valid {
 		newAppointment(group, config)
 		return
 	}
