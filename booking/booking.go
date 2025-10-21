@@ -76,6 +76,7 @@ func (c *client) get(elionaID int32) (bookingResponse, error) {
 
 func (c *client) Book(groups map[string]syncmodel.BookingGroup) error {
 	for _, group := range groups {
+		log.Trace("booking", "Book(groups) BookingGroup: %+v", group)
 		var convertedBookings []bookingRequest
 		for _, booking := range group.Occurrences {
 			convertedBookings = append(convertedBookings, bookingRequest{
@@ -92,10 +93,12 @@ func (c *client) Book(groups map[string]syncmodel.BookingGroup) error {
 			GroupID:     group.ElionaID,
 			Occurrences: convertedBookings,
 		}
+		log.Trace("booking", "Book(groups) bookingGroupRequest: %+v", convertedGroup)
 		responseGroup, err := c.book(convertedGroup)
 		if err != nil {
 			return err
 		}
+		log.Trace("booking", "Book(groups) bookingGroupResponse: %+v", responseGroup)
 		group.ElionaID = responseGroup.Id
 		for i, responseBooking := range responseGroup.Bookings {
 			// This works because the order of the bookings in response is kept
