@@ -330,6 +330,11 @@ func (h *EWSHelper) GetRoomAppointments(assetID int32, roomEmail string, syncSta
         </m:SyncFolderItems>
     </soap:Body>
 </soap:Envelope>`, roomEmail, syncState)
+
+	// replace empty SyncState tag to fetch all appointments
+	log.Debug("ews", "room sync state for %s: '%s'", roomEmail, syncState)
+	strings.Replace(requestXML, "<m:SyncState>%s</m:SyncState>", "", -1)
+
 	responseXML, err := h.sendRequest(requestXML)
 	if err != nil {
 		return nil, nil, nil, syncState, fmt.Errorf("getting room %v appointments: %v", roomEmail, err)
